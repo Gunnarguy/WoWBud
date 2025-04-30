@@ -9,58 +9,115 @@ import SwiftUI
 
 @main
 struct WoWBudApp: App {
-    // State to control the presentation of the settings sheet
-    @State private var showingSettings = false
-
+    // App version and brand info
+    private let appVersion = "1.0.0"
+    private let appName = "WoWBud Classic Anniversary"
+    
+    // App state
+    @State private var isFirstLaunch = UserDefaults.standard.object(forKey: "hasLaunchedBefore") == nil
+    @State private var showingSplash = true
+    
     var body: some Scene {
         WindowGroup {
-            // Main application view
-            NavigationView {  // Use NavigationView for title and potential toolbar items
-                mainContentView
-            }
-            // Present the SettingsView as a sheet if needed
-            .sheet(isPresented: $showingSettings) {
-                SettingsView()
-            }
-            // Check credentials when the view appears
-            .onAppear(perform: checkCredentials)
-        }
-    }
-
-    /// Determines the main content view based on whether credentials are set.
-    @ViewBuilder
-    private var mainContentView: some View {
-        // Check if essential credentials are placeholders
-        if Secrets.clientID == "<INSERT-CLIENT-ID>"
-            || Secrets.clientSecret == "<INSERT-CLIENT-SECRET>"
-        {
-            // Show a message prompting the user to enter settings
-            VStack {
-                Text("API Credentials Needed")
-                    .font(.headline)
-                Text("Please enter your Blizzard API Client ID and Secret in Settings.")
-                    .multilineTextAlignment(.center)
-                    .padding()
-                Button("Open Settings") {
-                    showingSettings = true
+            ZStack {
+                // Main content
+                NavigationView {
+                    ContentView()
                 }
-                .buttonStyle(.borderedProminent)
+                
+                // Splash screen (only on first launch or during loading)
+                if showingSplash {
+                    splashScreen
+                }
             }
-            .padding()
-        } else {
-            // If credentials seem okay, show the main lookup view
-            SpellLookupView()  // Use the dedicated view for spell lookup
+            .onAppear {
+                // Check if this is the first launch
+                if isFirstLaunch {
+                    // Mark as launched
+                    UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+                    
+                    // Show splash screen for longer on first launch
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                        withAnimation {
+                            showingSplash = false
+                        }
+                    }
+                } else {
+                    // Quick splash for returning users
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        withAnimation {
+                            showingSplash = false
+                        }
+                    }
+                }
+                
+                // Initialize OAuth token if credentials exist
+                if Secrets.clientID != "<INSERT-CLIENT-ID>" &&
+                   Secrets.clientSecret != "<INSERT-CLIENT-SECRET>" &&
+                   Secrets.oauthToken.isEmpty {
+                    refreshOAuthToken()
+                }
+            }
         }
     }
-
-    /// Checks if credentials are set and presents the settings sheet if not.
-    private func checkCredentials() {
-        // Present settings immediately if placeholders are detected
-        if Secrets.clientID == "<INSERT-CLIENT-ID>"
-            || Secrets.clientSecret == "<INSERT-CLIENT-SECRET>"
-        {
-            showingSettings = true
+    
+    /// Splash screen view
+    private var splashScreen: some View {
+        ZStack {
+            // Background color
+            Color.black.edgesIgnoringSafeArea(.all)
+            
+            VStack(spacing: 20) {
+                // App logo/icon
+                Image(systemName: "shield.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(.yellow)
+                
+                // App name
+                Text(appName)
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .foregroundColor(.white)
+                
+                // Anniversary edition badge
+                Text("20th Anniversary Edition")
+                    .font(.headline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.yellow)
+                    .foregroundColor(.black)
+                    .cornerRadius(20)
+                
+                // Loading indicator
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .padding(.top, 30)
+                
+                // Version
+                Text("Version \(appVersion)")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                    .padding(.top, 10)
+            }
         }
-        // TODO: Add logic here later to fetch/validate OAuth token if needed
+        .transition(.opacity)
+    }
+    
+    /// Refresh the OAuth token
+    private func refreshOAuthToken() {
+        Task {
+            do {
+                let token = try await OAuth.fetchToken(
+                    clientID: Secrets.clientID,
+                    clientSecret: Secrets.clientSecret
+                )
+                
+                // Store the token
+                Secrets.oauthToken = token
+                print("Successfully obtained OAuth token")
+            } catch {
+                print("Failed to fetch OAuth token: \(error)")
+            }
+        }
     }
 }
