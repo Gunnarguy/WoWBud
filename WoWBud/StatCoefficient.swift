@@ -1,8 +1,11 @@
 //
 //  StatCoefficient.swift
-//  WoWBud
-//
-//  Created by Gunnar Hostetler on 4/30/25.
 //
 
 import Foundation
+
+struct StatCoefficient: Codable, Hashable, Sendable {
+    let statID: Int
+    let coefficient: Double
+    let comment: String?
+}

@@ -1,8 +1,11 @@
 //
 //  PlayableClass.swift
-//  WoWBud
-//
-//  Created by Gunnar Hostetler on 4/30/25.
 //
 
 import Foundation
+
+struct PlayableClass: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let powerType: String
+}

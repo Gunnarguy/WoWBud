@@ -1,8 +1,12 @@
 //
 //  PlayableRace.swift
-//  WoWBud
-//
-//  Created by Gunnar Hostetler on 4/30/25.
 //
 
 import Foundation
+
+struct PlayableRace: Codable, Hashable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let faction: String
+    let isSelectable: Bool
+}
