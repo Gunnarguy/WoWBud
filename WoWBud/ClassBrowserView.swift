@@ -627,6 +627,7 @@ struct ClassBrowserView: View {
                 powerType: "Rage",
                 description:
                     "Warriors are melee fighters, skilled in the use of many weapons and armor types. They can spec to tank, deal damage, or a hybrid of both.",
+                // All races can be Warriors in Classic
                 compatibleRaces: [1, 2, 3, 4, 5, 6, 7, 8],
                 armorTypes: [.cloth, .leather, .mail, .plate],
                 weaponTypes: [
@@ -676,6 +677,75 @@ struct ClassBrowserView: View {
                 ]
             ),
             ClassicClass(
+                id: 2,
+                name: "Paladin",
+                iconName: "staroflife.fill",
+                color: Color(hex: "#F58CBA"),
+                powerType: "Mana",
+                description:
+                    "Holy warriors who wield the Light to protect the weak, heal allies, and vanquish evil. They can tank, heal, or deal damage.",
+                // Alliance only: Human, Dwarf
+                compatibleRaces: [1, 3],
+                armorTypes: [.cloth, .leather, .mail, .plate],  // Plate at level 40, removed shield
+                weaponTypes: [
+                    .oneHandedMace, .twoHandedMace, .oneHandedSword, .twoHandedSword, .polearm,
+                    .shield,
+                ],  // Shield is a weapon type
+                roles: ["Tank", "Healer", "DPS"],
+                coreAbilities: [
+                    ClassicAbility(
+                        id: 201, name: "Divine Shield", level: 6,
+                        description:
+                            "Protects the paladin from all damage and spells for 8 sec, but reduces all damage caused by 50%."
+                    ),
+                    ClassicAbility(
+                        id: 202, name: "Holy Light", level: 1,
+                        description: "Heals a friendly target for a moderate amount."
+                    ),
+                    ClassicAbility(
+                        id: 203, name: "Blessing of Might", level: 4,
+                        description:
+                            "Places a Blessing on the target, increasing attack power for 5 min."
+                    ),
+                    ClassicAbility(
+                        id: 204, name: "Judgement", level: 4,
+                        description:
+                            "Unleashes the energy of a Seal spell to judge an enemy, causing Holy damage."
+                    ),
+                    ClassicAbility(
+                        id: 205, name: "Consecration", level: 20,
+                        description:
+                            "Consecrates the land beneath the Paladin, doing Holy damage over 8 sec to enemies who enter."
+                    ),
+                ],
+                specs: [
+                    ClassicSpec(
+                        id: 21,
+                        name: "Holy",
+                        iconName: "cross.fill",
+                        description:
+                            "Uses the Light to heal and protect allies, specializing in powerful healing spells.",
+                        roles: ["Healer"]
+                    ),
+                    ClassicSpec(
+                        id: 22,
+                        name: "Protection",
+                        iconName: "shield.fill",
+                        description:
+                            "Defensive specialist using holy power to protect themselves and allies from harm.",
+                        roles: ["Tank"]
+                    ),
+                    ClassicSpec(
+                        id: 23,
+                        name: "Retribution",
+                        iconName: "bolt.fill",
+                        description:
+                            "Harnesses the power of the Light to strike down enemies with righteous fury.",
+                        roles: ["DPS"]
+                    ),
+                ]
+            ),
+            ClassicClass(
                 id: 5,
                 name: "Priest",
                 iconName: "cross.fill",
@@ -683,7 +753,9 @@ struct ClassBrowserView: View {
                 powerType: "Mana",
                 description:
                     "Priests are spiritual leaders of their people, using the power of light and shadow to heal allies and harm enemies.",
-                compatibleRaces: [1, 3, 4, 5, 7, 8, 10, 11],
+                // Human, Dwarf, Night Elf (Alliance) & Undead, Troll (Horde) can be Priests in Classic
+                // Gnomes cannot be priests in Classic Era.
+                compatibleRaces: [1, 3, 4, 5, 8],
                 armorTypes: [.cloth],
                 weaponTypes: [.oneHandedMace, .staff, .dagger, .wand],
                 roles: ["Healer", "DPS"],
@@ -732,7 +804,8 @@ struct ClassBrowserView: View {
                 powerType: "Mana",
                 description:
                     "Mages wield arcane, fire, and frost magic to destroy enemies and control the battlefield.",
-                compatibleRaces: [1, 3, 5, 7, 8, 10, 11],
+                // Human, Gnome (Alliance) & Undead, Troll (Horde) can be Mages in Classic
+                compatibleRaces: [1, 7, 5, 8],
                 armorTypes: [.cloth],
                 weaponTypes: [.staff, .dagger, .wand, .oneHandedSword],
                 roles: ["DPS"],
@@ -775,9 +848,13 @@ struct ClassBrowserView: View {
                 color: Color(hex: "#FFF569"),
                 powerType: "Energy",
                 description: "Masters of stealth who specialize in assassination and close combat.",
-                compatibleRaces: [1, 2, 3, 4, 5, 7, 8, 10],
+                // Human, Dwarf, Night Elf, Gnome (Alliance) & Orc, Undead, Troll (Horde) can be Rogues in Classic
+                compatibleRaces: [1, 3, 4, 7, 2, 5, 8],
                 armorTypes: [.cloth, .leather],
-                weaponTypes: [.dagger, .oneHandedSword, .oneHandedMace, .fistWeapon, .thrown],
+                weaponTypes: [
+                    .dagger, .oneHandedSword, .oneHandedMace, .fistWeapon, .thrown, .bow, .crossbow,
+                    .gun,
+                ],  // Rogues can use ranged weapons
                 roles: ["DPS"],
                 coreAbilities: [
                     ClassicAbility(
@@ -809,6 +886,200 @@ struct ClassBrowserView: View {
                         description: "Uses stealth and deception to ambush enemies.",
                         roles: ["DPS"]
                     ),
+                ]
+            ),
+            // Add Hunter Class
+            ClassicClass(
+                id: 3,
+                name: "Hunter",
+                iconName: "figure.archery",
+                color: Color(hex: "#ABD473"),
+                powerType: "Mana",  // Focus was introduced later
+                description:
+                    "Hunters are masters of ranged combat, taming wild beasts to fight alongside them.",
+                // Dwarf, Night Elf (Alliance) & Orc, Tauren, Troll (Horde) can be Hunters in Classic
+                compatibleRaces: [3, 4, 2, 6, 8],
+                armorTypes: [.cloth, .leather, .mail],  // Mail at level 40
+                weaponTypes: [
+                    .oneHandedAxe, .twoHandedAxe, .oneHandedSword, .twoHandedSword, .dagger,
+                    .fistWeapon,
+                    .polearm, .staff, .bow, .crossbow, .gun, .thrown,
+                ],
+                roles: ["DPS"],
+                coreAbilities: [
+                    ClassicAbility(
+                        id: 301, name: "Raptor Strike", level: 1,
+                        description: "A melee attack that increases damage."),
+                    ClassicAbility(
+                        id: 302, name: "Auto Shot", level: 1,
+                        description:
+                            "Automatically shoots the target with the equipped ranged weapon."),
+                    ClassicAbility(
+                        id: 303, name: "Hunter's Mark", level: 6,
+                        description:
+                            "Places Hunter's Mark on the target, increasing ranged attack power against that target."
+                    ),
+                    ClassicAbility(
+                        id: 304, name: "Tame Beast", level: 10,
+                        description: "Tames a beast to be the hunter's pet."),
+                ],
+                specs: [
+                    ClassicSpec(
+                        id: 31, name: "Beast Mastery", iconName: "pawprint.fill",
+                        description: "Focuses on empowering the hunter's pet.", roles: ["DPS"]),
+                    ClassicSpec(
+                        id: 32, name: "Marksmanship", iconName: "scope",
+                        description: "Enhances ranged weapon skills for powerful shots.",
+                        roles: ["DPS"]),
+                    ClassicSpec(
+                        id: 33, name: "Survival", iconName: "leaf.arrow.triangle.circlepath",
+                        description: "Uses traps and utility for control and damage.",
+                        roles: ["DPS"]),
+                ]
+            ),
+            // Add Shaman Class
+            ClassicClass(
+                id: 7,
+                name: "Shaman",
+                iconName: "bolt.horizontal.fill",
+                color: Color(hex: "#0070DE"),
+                powerType: "Mana",
+                description:
+                    "Shamans are spiritual guides who command the elements and commune with spirits. They can heal, deal damage, or enhance allies.",
+                // Orc, Tauren, Troll (Horde only) can be Shamans in Classic
+                compatibleRaces: [2, 6, 8],
+                armorTypes: [.cloth, .leather, .mail],  // Mail at level 40, removed shield
+                weaponTypes: [
+                    .oneHandedMace, .twoHandedMace, .oneHandedAxe, .twoHandedAxe, .staff,
+                    .fistWeapon, .dagger, .shield,
+                ],  // Shield is a weapon type
+                roles: ["Healer", "DPS"],  // Can also off-tank with talents/gear
+                coreAbilities: [
+                    ClassicAbility(
+                        id: 701, name: "Lightning Bolt", level: 1,
+                        description:
+                            "Hurls a bolt of lightning at the target, causing Nature damage."),
+                    ClassicAbility(
+                        id: 702, name: "Healing Wave", level: 1,
+                        description: "Heals a friendly target for a moderate amount."),
+                    ClassicAbility(
+                        id: 703, name: "Rockbiter Weapon", level: 1,
+                        description:
+                            "Imbues the Shaman's weapon, increasing attack power and causing additional threat."
+                    ),
+                    ClassicAbility(
+                        id: 704, name: "Earthbind Totem", level: 6,
+                        description: "Summons an Earthbind Totem that slows nearby enemies."),
+                ],
+                specs: [
+                    ClassicSpec(
+                        id: 71, name: "Elemental", iconName: "cloud.bolt.rain.fill",
+                        description: "Focuses on elemental magic for ranged damage.", roles: ["DPS"]
+                    ),
+                    ClassicSpec(
+                        id: 72, name: "Enhancement", iconName: "hammer.fill",
+                        description: "Enhances melee combat abilities with elemental power.",
+                        roles: ["DPS"]),
+                    ClassicSpec(
+                        id: 73, name: "Restoration", iconName: "drop.fill",
+                        description: "Specializes in healing magic using water and earth.",
+                        roles: ["Healer"]),
+                ]
+            ),
+            // Add Warlock Class
+            ClassicClass(
+                id: 9,
+                name: "Warlock",
+                iconName: "flame.circle.fill",
+                color: Color(hex: "#9482C9"),
+                powerType: "Mana",  // Uses Health via Life Tap
+                description:
+                    "Warlocks command demonic forces and wield fel magic, specializing in damage over time, curses, and summoning demons.",
+                // Human, Gnome (Alliance) & Orc, Undead (Horde) can be Warlocks in Classic
+                compatibleRaces: [1, 7, 2, 5],
+                armorTypes: [.cloth],
+                weaponTypes: [.dagger, .staff, .wand, .oneHandedSword],
+                roles: ["DPS"],
+                coreAbilities: [
+                    ClassicAbility(
+                        id: 901, name: "Shadow Bolt", level: 1,
+                        description:
+                            "Sends a bolt of shadow energy at the enemy, causing Shadow damage."),
+                    ClassicAbility(
+                        id: 902, name: "Summon Imp", level: 1,
+                        description: "Summons an Imp to assist the Warlock."),
+                    ClassicAbility(
+                        id: 903, name: "Corruption", level: 4,
+                        description: "Corrupts the target, causing Shadow damage over time."),
+                    ClassicAbility(
+                        id: 904, name: "Life Tap", level: 6,
+                        description: "Converts health into mana."),
+                ],
+                specs: [
+                    ClassicSpec(
+                        id: 91, name: "Affliction", iconName: "waveform.path.ecg",
+                        description: "Specializes in curses and damage-over-time spells.",
+                        roles: ["DPS"]),
+                    ClassicSpec(
+                        id: 92, name: "Demonology", iconName: "figure.walk.diamond.fill",
+                        description: "Focuses on summoning and empowering demonic minions.",
+                        roles: ["DPS"]),
+                    ClassicSpec(
+                        id: 93, name: "Destruction", iconName: "meteor",
+                        description: "Commands fel fire for direct damage and chaos.",
+                        roles: ["DPS"]),
+                ]
+            ),
+            // Add Druid Class
+            ClassicClass(
+                id: 11,
+                name: "Druid",
+                iconName: "leaf.fill",
+                color: Color(hex: "#FF7D0A"),
+                powerType: "Mana",  // Changes based on form (Energy, Rage)
+                description:
+                    "Druids are shapeshifters who draw upon the power of nature to protect balance. They can fill any role: tank, healer, or damage dealer.",
+                // Night Elf (Alliance) & Tauren (Horde) can be Druids in Classic
+                compatibleRaces: [4, 6],
+                armorTypes: [.cloth, .leather],
+                weaponTypes: [
+                    .staff, .oneHandedMace, .twoHandedMace, .dagger, .fistWeapon, .polearm,
+                ],  // Limited weapon use
+                roles: ["Tank", "Healer", "DPS"],
+                coreAbilities: [
+                    ClassicAbility(
+                        id: 1101, name: "Wrath", level: 1,
+                        description: "Hurls energy at the target, causing Nature damage."),
+                    ClassicAbility(
+                        id: 1102, name: "Healing Touch", level: 1,
+                        description: "Heals a friendly target for a large amount."),
+                    ClassicAbility(
+                        id: 1103, name: "Bear Form", level: 10,
+                        description:
+                            "Shapeshift into bear form, increasing armor, stamina, and threat generation."
+                    ),
+                    ClassicAbility(
+                        id: 1104, name: "Cat Form", level: 20,
+                        description:
+                            "Shapeshift into cat form, increasing attack speed and allowing stealth."
+                    ),
+                ],
+                specs: [
+                    ClassicSpec(
+                        id: 111, name: "Balance", iconName: "moon.fill",
+                        description:
+                            "Uses Arcane and Nature magic for ranged damage, shifting into Moonkin Form.",
+                        roles: ["DPS"]),
+                    ClassicSpec(
+                        id: 112, name: "Feral Combat", iconName: "pawprint.fill",
+                        description:
+                            "Focuses on shapeshifting into Cat or Bear form for melee DPS or tanking.",
+                        roles: ["Tank", "DPS"]),
+                    ClassicSpec(
+                        id: 113, name: "Restoration", iconName: "leaf.arrow.triangle.circlepath",
+                        description:
+                            "Specializes in healing-over-time effects and nature-based healing.",
+                        roles: ["Healer"]),
                 ]
             ),
         ]

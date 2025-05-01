@@ -7,176 +7,173 @@
 
 import SwiftUI
 
+// Platform-specific imports and typealiases
+#if canImport(AppKit) && !targetEnvironment(macCatalyst)
+    import AppKit
+    typealias PlatformColor = NSColor
+    typealias PlatformSharingPicker = NSSharingServicePicker
+    typealias PlatformButton = NSButton
+    typealias PlatformViewRepresentable = NSViewRepresentable
+    let platformControlBackgroundColor = Color(PlatformColor.controlBackgroundColor)  // Use NSColor directly
+    let platformApp = NSApp
+#elseif canImport(UIKit)
+    import UIKit
+    typealias PlatformColor = UIColor
+    let platformBackgroundColor = Color(UIColor.systemBackground)  // Main background
+    let platformControlBackgroundColor = Color(UIColor.secondarySystemBackground)  // Control/Section background
+    // No direct equivalent for NSSharingServicePicker, use UIActivityViewController
+    // No direct equivalent for NSButton in this context
+    // No direct equivalent for NSViewRepresentable in this context (use UIViewRepresentable)
+    let platformApp = UIApplication.shared
+#else
+    #error("Unsupported platform")
+#endif
+
+// MARK: - Platform Agnostic Colors
+extension Color {
+    static var platformControlBackground: Color {
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            return Color(PlatformColor.controlBackgroundColor)
+        #elseif canImport(UIKit)
+            return Color(UIColor.secondarySystemGroupedBackground)  // Suitable UIKit equivalent
+        #else
+            return Color.gray  // Fallback for unsupported platforms
+        #endif
+    }
+}
+
 struct ItemLookupView: View {
-    // State for the input
+    // MARK: - State Variables
     @State private var searchText: String = ""
     @State private var searchMode: SearchMode = .itemID
 
-    // State to hold the fetched data
     @State private var item: ClassicItem? = nil
     @State private var searchResults: [ClassicItemPreview] = []
 
-    // State for displaying error messages
     @State private var errorMessage: String? = nil
-
-    // State to indicate loading activity
     @State private var isLoading: Bool = false
-
-    // Recently viewed items
     @State private var recentItems: [ClassicItemPreview] = []
 
-    // Popular phase 1 items (mock data)
-    private let phase1Items: [ClassicItemPreview] = [
-        ClassicItemPreview(
-            id: 18832, name: "Brutality Blade", quality: 4, iconName: "inv_sword_43"),
-        ClassicItemPreview(
-            id: 18803, name: "Finkle's Lava Dredger", quality: 4, iconName: "inv_hammer_22"),
-        ClassicItemPreview(
-            id: 18814, name: "Choker of the Fire Lord", quality: 4,
-            iconName: "inv_jewelry_necklace_07"),
-        ClassicItemPreview(
-            id: 18821, name: "Quick Strike Ring", quality: 4, iconName: "inv_jewelry_ring_24"),
-        ClassicItemPreview(
-            id: 16800, name: "Arcanist Crown", quality: 4, iconName: "inv_helmet_66"),
-        ClassicItemPreview(
-            id: 16858, name: "Lawbringer Chestguard", quality: 4, iconName: "inv_chest_plate03"),
-        ClassicItemPreview(
-            id: 16865, name: "Breastplate of Might", quality: 4, iconName: "inv_chest_plate16"),
-        ClassicItemPreview(
-            id: 18264, name: "Plans: Elemental Sharpening Stone", quality: 1,
-            iconName: "inv_scroll_03"),
-    ]
+    // MARK: - Services
+    private let apiService = ClassicAPIService()
 
+    // MARK: - Platform Specific State (macOS)
+    #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+        @State private var sharingServicePicker = PlatformSharingPicker(items: [])
+        @State private var shareButton: PlatformButton?  // To anchor the picker
+    #endif
+
+    // MARK: - Body
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
-            HStack {
-                // Search mode picker
-                Picker("", selection: $searchMode) {
-                    Text("ID").tag(SearchMode.itemID)
-                    Text("Name").tag(SearchMode.itemName)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 100)
+            searchBar()  // Extracted search bar view
 
-                // Search text field
-                TextField(
-                    searchMode == .itemID ? "Enter Item ID" : "Enter Item Name", text: $searchText
-                )
-                .padding(8)
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(8)
-                .keyboardType(searchMode == .itemID ? .numberPad : .default)
-                .onSubmit {
-                    hideKeyboard()
-                    performSearch()
-                }
-                .submitLabel(searchMode == .itemID ? .search : .done)
-
-                // Search button
-                Button(action: {
-                    hideKeyboard()
-                    performSearch()
-                }) {
-                    Image(systemName: "magnifyingglass")
-                        .padding(8)
-                        .foregroundColor(.white)
-                        .background(Color.blue)
-                        .cornerRadius(8)
-                }
-                .disabled(searchText.isEmpty || isLoading)
-            }
-            .padding()
-
-            // Content area
+            // Main content area
             ScrollView {
-                // Loading indicator
-                if isLoading {
-                    ProgressView("Loading...")
-                        .padding()
-                }
-                // Error message
-                else if let errorMessage = errorMessage {
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .padding()
-                }
-                // Item detail
-                else if let item = item {
-                    itemDetailView(item)
-                }
-                // Search results
-                else if !searchResults.isEmpty {
-                    LazyVStack(alignment: .leading, spacing: 16) {
-                        Text("Search Results")
-                            .font(.headline)
-                            .padding(.horizontal)
-
-                        ForEach(searchResults) { itemPreview in
-                            Button(action: {
-                                loadItem(id: itemPreview.id)
-                            }) {
-                                itemPreviewRow(itemPreview)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding()
-                }
-                // Initial/empty state
-                else {
-                    defaultContentView
-                }
+                contentArea()  // Extracted content area view
             }
         }
         .navigationTitle("Classic Item Database")
-        .onAppear {
-            // Load recent items from UserDefaults
-            loadRecentItems()
-        }
-        // Add tap gesture to dismiss keyboard when tapping outside text field
-        .contentShape(Rectangle())
-        .onTapGesture {
-            hideKeyboard()
-        }
+        .onAppear(perform: loadRecentItems)  // Load recent items on appear
+        .contentShape(Rectangle())  // Allow tapping outside text field to dismiss keyboard
+        .onTapGesture(perform: hideKeyboard)
     }
 
     // MARK: - Subviews
 
-    /// Default content view shown when no search is performed
-    private var defaultContentView: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            // Phase 1 popular items
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Molten Core Highlights")
-                    .font(.headline)
-                    .padding(.horizontal)
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(phase1Items) { itemPreview in
-                            Button(action: {
-                                loadItem(id: itemPreview.id)
-                            }) {
-                                itemCard(itemPreview)
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                        }
-                    }
-                    .padding(.horizontal)
-                }
+    /// Builds the search bar view.
+    @ViewBuilder
+    private func searchBar() -> some View {
+        HStack {
+            // Search mode picker (ID/Name)
+            Picker("", selection: $searchMode) {
+                Text("ID").tag(SearchMode.itemID)
+                Text("Name").tag(SearchMode.itemName)
             }
+            .pickerStyle(.segmented)
+            .frame(width: 100)
 
-            // Recently viewed items
+            // Search text field
+            TextField(
+                searchMode == .itemID ? "Enter Item ID" : "Enter Item Name", text: $searchText
+            )
+            .padding(8)
+            #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+                .background(Color(PlatformColor.controlBackgroundColor))  // Platform-specific background
+            #elseif canImport(UIKit)
+                .background(Color(PlatformColor.secondarySystemBackground))  // Use secondarySystemBackground for text field
+            #endif
+            .cornerRadius(8)
+            #if canImport(UIKit)  // iOS specific keyboard type
+                .keyboardType(searchMode == .itemID ? .numberPad : .default)
+            #endif
+            .onSubmit {  // Action on pressing Enter/Return
+                hideKeyboard()
+                Task { await performSearch() }
+            }
+            #if canImport(UIKit)  // iOS specific submit label
+                .submitLabel(searchMode == .itemID ? .search : .done)
+            #endif
+
+            // Search button
+            Button(action: {
+                hideKeyboard()
+                Task { await performSearch() }
+            }) {
+                Image(systemName: "magnifyingglass")
+                    .padding(8)
+                    .foregroundColor(.white)
+                    .background(Color.blue)
+                    .cornerRadius(8)
+            }
+            .disabled(searchText.isEmpty || isLoading)  // Disable when loading or empty
+        }
+        .padding()
+    }
+
+    /// Builds the main content area based on the current state.
+    @ViewBuilder
+    private func contentArea() -> some View {
+        // Loading indicator
+        if isLoading {
+            ProgressView("Loading...")
+                .padding()
+        }
+        // Error message display
+        else if let errorMessage = errorMessage {
+            Text(errorMessage)
+                .foregroundColor(.red)
+                .padding()
+        }
+        // Detailed item view
+        else if let item = item {
+            itemDetailView(item)
+        }
+        // Search results list
+        else if !searchResults.isEmpty {
+            searchResultsList()  // Extracted search results list view
+        }
+        // Default view (recent items, tips)
+        else {
+            defaultContentView()
+        }
+    }
+
+    /// Builds the default content view shown initially or when search is cleared.
+    @ViewBuilder
+    private func defaultContentView() -> some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Recently viewed items section
             if !recentItems.isEmpty {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("Recently Viewed")
                         .font(.headline)
                         .padding(.horizontal)
 
+                    // Display up to 5 recent items
                     ForEach(recentItems.prefix(5)) { itemPreview in
                         Button(action: {
-                            loadItem(id: itemPreview.id)
+                            Task { await loadItem(id: itemPreview.id) }
                         }) {
                             itemPreviewRow(itemPreview)
                         }
@@ -184,594 +181,661 @@ struct ItemLookupView: View {
                     }
                 }
                 .padding()
+            } else {
+                // Placeholder text if no recent items
+                Text("Search for an item or view recent items.")
+                    .foregroundColor(.secondary)
+                    .padding()
             }
 
-            // Search tips
+            // Search tips section
             VStack(alignment: .leading, spacing: 8) {
                 Text("Search Tips")
                     .font(.headline)
-
                 Text("• Search by item ID for exact matches")
                 Text("• Search by name for multiple results")
                 Text("• Tap on items to view full details")
-                Text("• Phase 2 items available Dec 12")
+                // Text("• Phase 2 items available Dec 12") // Example placeholder
             }
             .padding()
-            .background(Color(.secondarySystemBackground))
+            #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+                .background(Color(PlatformColor.controlBackgroundColor))  // Platform-specific background
+            #elseif canImport(UIKit)
+                .background(Color(PlatformColor.secondarySystemBackground))  // Use secondarySystemBackground for tips section
+            #endif
             .cornerRadius(10)
             .padding()
         }
         .padding(.top)
     }
 
-    /// Card view for item preview
-    private func itemCard(_ itemPreview: ClassicItemPreview) -> some View {
-        VStack(spacing: 8) {
-            // Item icon
-            itemIconView(iconName: itemPreview.iconName, quality: itemPreview.quality)
-                .frame(width: 60, height: 60)
+    /// Builds the list of search results.
+    @ViewBuilder
+    private func searchResultsList() -> some View {
+        LazyVStack(alignment: .leading, spacing: 16) {
+            Text("Search Results")
+                .font(.headline)
+                .padding(.horizontal)
 
-            // Item name
-            Text(itemPreview.name)
-                .font(.caption)
-                .foregroundColor(qualityColor(itemPreview.quality))
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(width: 100)
+            // Iterate over search results and display preview rows
+            ForEach(searchResults) { itemPreview in
+                Button(action: {
+                    Task { await loadItem(id: itemPreview.id) }
+                }) {
+                    itemPreviewRow(itemPreview)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
         }
-        .padding(8)
-        .background(Color(.secondarySystemBackground))
-        .cornerRadius(8)
+        .padding()
     }
 
-    /// Row view for item preview in lists
+    /// Builds a row view for an item preview (used in search results and recent items).
+    /// - Parameter itemPreview: The `ClassicItemPreview` data to display.
     private func itemPreviewRow(_ itemPreview: ClassicItemPreview) -> some View {
         HStack(spacing: 12) {
-            // Item icon
-            itemIconView(iconName: itemPreview.iconName, quality: itemPreview.quality)
+            // Item icon with quality border
+            itemIconView(iconName: itemPreview.iconName, qualityType: itemPreview.qualityType)
                 .frame(width: 40, height: 40)
 
-            // Item details
+            // Item name and ID
             VStack(alignment: .leading, spacing: 4) {
                 Text(itemPreview.name)
                     .font(.headline)
-                    .foregroundColor(qualityColor(itemPreview.quality))
+                    .foregroundColor(qualityColor(itemPreview.qualityType))  // Color based on quality
 
                 Text("Item ID: \(itemPreview.id)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
 
-            Spacer()
+            Spacer()  // Push chevron to the right
 
+            // Navigation indicator
             Image(systemName: "chevron.right")
                 .foregroundColor(.secondary)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            .background(Color(PlatformColor.controlBackgroundColor))  // Platform-specific background
+        #elseif canImport(UIKit)
+            .background(Color(PlatformColor.systemBackground))  // Use systemBackground for rows
+        #endif
         .cornerRadius(8)
-        .padding(.horizontal)
+        .padding(.horizontal)  // Add horizontal padding around the row
     }
 
-    /// View for detailed item information
+    /// Builds the detailed view for a specific item.
+    /// - Parameter item: The `ClassicItem` data to display.
     private func itemDetailView(_ item: ClassicItem) -> some View {
         VStack(alignment: .leading, spacing: 20) {
-            // Item header
-            HStack(spacing: 16) {
-                // Item icon
-                itemIconView(iconName: item.iconName, quality: item.quality)
-                    .frame(width: 64, height: 64)
+            // Item Header: Icon, Name, Type, Binding, Item Level
+            itemHeaderView(item)
 
-                // Item name and basic info
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.name)
-                        .font(.headline)
-                        .foregroundColor(qualityColor(item.quality))
-
-                    if let itemType = item.itemType, let itemSubType = item.itemSubType {
-                        Text("\(itemType) • \(itemSubType)")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-
-                    if let bindType = item.bindType {
-                        Text(bindType)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+            // Armor Section (if applicable)
+            if let armor = item.armor, armor > 0 {
+                detailSection {
+                    Text("Armor").font(.headline)
+                    Text("\(armor) Armor").font(.body)
                 }
+            }
 
-                Spacer()
-
-                // Item level badge
-                if let itemLevel = item.itemLevel {
-                    Text("iLvl \(itemLevel)")
+            // Weapon Stats Section (if applicable)
+            if let weaponInfo = item.weaponInfo {
+                detailSection {
+                    Text("Weapon").font(.headline)
+                    HStack {
+                        Text(weaponInfo.damageString)
+                        Spacer()
+                        Text(weaponInfo.speedString)
+                    }
+                    .font(.body)
+                    Text(weaponInfo.dpsString)
                         .font(.caption)
-                        .padding(6)
-                        .background(Color.blue.opacity(0.2))
-                        .cornerRadius(6)
+                        .foregroundColor(.secondary)
                 }
             }
-            .padding()
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(10)
 
-            // Item stats
+            // Stats Section (if applicable)
             if !item.stats.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Stats")
-                        .font(.headline)
-
+                detailSection {
+                    Text("Stats").font(.headline)
                     ForEach(item.stats, id: \.self) { stat in
-                        Text(stat)
-                            .font(.body)
+                        Text(stat).font(.body)
                     }
                 }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(10)
             }
 
-            // Item effects/procs
+            // Effects/Spells Section (if applicable)
             if let itemSpells = item.itemSpells, !itemSpells.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Effects")
-                        .font(.headline)
-
+                detailSection {
+                    Text("Effects").font(.headline)
                     ForEach(itemSpells, id: \.self) { spell in
-                        Text(spell)
-                            .font(.body)
-                            .foregroundColor(.green)
+                        Text(spell).font(.body).foregroundColor(.green)
                     }
                 }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(10)
             }
 
-            // Source information
-            if let sources = item.sources, !sources.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Sources")
-                        .font(.headline)
+            // Durability Section (if applicable)
+            if let durability = item.durability, durability > 0 {
+                detailSection {
+                    // Use the pre-formatted display string if available, otherwise construct it
+                    Text(item.durabilityDisplayString ?? "Durability \(durability) / \(durability)")
+                        .font(.body)
+                }
+            }
 
+            // Stack Size Section (if applicable)
+            if let maxCount = item.maxCount, maxCount > 1 {
+                detailSection {
+                    Text("Stack Size: \(maxCount)").font(.body)
+                }
+            }
+
+            // Sources Section (if applicable)
+            if let sources = item.sources, !sources.isEmpty {
+                detailSection {
+                    Text("Sources").font(.headline)
                     ForEach(sources, id: \.self) { source in
                         HStack {
-                            Image(systemName: "location")
-                                .foregroundColor(.blue)
-
-                            Text(source)
-                                .font(.body)
+                            Image(systemName: "location").foregroundColor(.blue)
+                            Text(source).font(.body)
                         }
                     }
                 }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(10)
             }
 
-            // Item requirements
-            if item.requiredLevel > 0 || item.requiredClasses != nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Requirements")
-                        .font(.headline)
-
-                    if item.requiredLevel > 0 {
-                        Text("Required Level: \(item.requiredLevel)")
-                            .font(.body)
+            // Requirements Section (Level, Classes)
+            let reqLevel = item.requiredLevel ?? 0
+            if reqLevel > 0 || item.requiredClasses != nil {
+                detailSection {
+                    Text("Requirements").font(.headline)
+                    if reqLevel > 0 {
+                        Text("Required Level: \(reqLevel)").font(.body)
                     }
-
                     if let classes = item.requiredClasses {
-                        Text("Classes: \(classes)")
-                            .font(.body)
+                        Text("Classes: \(classes)").font(.body)
                     }
                 }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(10)
             }
 
-            // Vendor info
-            if let sellPrice = item.sellPrice, sellPrice > 0 {
-                HStack {
-                    Text("Vendor Sell:")
-                        .font(.headline)
-
-                    Spacer()
-
-                    // Format gold, silver, copper
-                    let gold = sellPrice / 10000
-                    let silver = (sellPrice % 10000) / 100
-                    let copper = sellPrice % 100
-
-                    if gold > 0 {
-                        Text("\(gold)g")
-                            .font(.body)
-                            .foregroundColor(.yellow)
-                    }
-
-                    if silver > 0 {
-                        Text("\(silver)s")
-                            .font(.body)
-                            .foregroundColor(.gray)
-                    }
-
-                    if copper > 0 {
-                        Text("\(copper)c")
-                            .font(.body)
-                            .foregroundColor(.orange)
-                    }
-                }
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .cornerRadius(10)
-            }
-
-            // Item ID
-            HStack {
-                Text("Item ID:")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Text("\(item.id)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                // Share button
-                Button(action: {
-                    // Share item info
-                    let shareText = "Check out this Classic WoW item: \(item.name) (ID: \(item.id))"
-                    let activityVC = UIActivityViewController(
-                        activityItems: [shareText],
-                        applicationActivities: nil
-                    )
-
-                    // Present the share sheet
-                    if let windowScene = UIApplication.shared.connectedScenes.first
-                        as? UIWindowScene,
-                        let rootViewController = windowScene.windows.first?.rootViewController
-                    {
-                        rootViewController.present(activityVC, animated: true)
-                    }
-                }) {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundColor(.blue)
+            // Flavor Text Section (if applicable)
+            if let description = item.description, !description.isEmpty {
+                detailSection {
+                    Text("\"\(description)\"")  // Display in quotes
+                        .font(.body)
+                        .italic()
+                        .foregroundColor(.yellow)  // Classic WoW flavor text color
                 }
             }
-            .padding()
+
+            // Vendor Sell Price Section (if applicable)
+            // Display if sellPrice has a value (even if 0, as some items have 0 sell price)
+            if let sellPrice = item.sellPrice {
+                detailSection {
+                    HStack {
+                        Text("Vendor Sell:").font(.headline)
+                        Spacer()
+                        // Use formatted strings if available, otherwise calculate from copper value
+                        formatCurrency(sellPrice, formattedPrice: item.sellPriceDisplay)
+                    }
+                }
+            }
+
+            // Footer: Item ID, ClassicDB Link, Share Button
+            itemFooterView(item)
         }
-        .padding()
+        .padding()  // Padding around the entire detail view content
     }
 
-    /// View for item icon with quality border
-    private func itemIconView(iconName: String, quality: Int) -> some View {
-        // In a real app, you would load the actual icon from API or assets
-        // For now, using a placeholder with color based on quality
-        ZStack {
+    /// Builds the header section of the item detail view.
+    /// - Parameter item: The `ClassicItem` data.
+    @ViewBuilder
+    private func itemHeaderView(_ item: ClassicItem) -> some View {
+        HStack(spacing: 16) {
+            // Item icon
+            itemIconView(iconName: item.iconName, qualityType: item.qualityType)
+                .frame(width: 64, height: 64)
+
+            // Item name, type, subtype, binding
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(.headline)
+                    .foregroundColor(qualityColor(item.qualityType))  // Color based on quality
+
+                // Display type and subtype if available
+                if let itemType = item.itemType, let itemSubType = item.itemSubType {
+                    Text("\(itemType) • \(itemSubType)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else if let itemType = item.itemType {  // Fallback to just type
+                    Text(itemType)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                // Display Inventory Slot
+                if let slot = item.inventorySlotName {
+                    Text(slot)  // Added Inventory Slot
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+
+                // Display binding type if available
+                if let bindType = item.bindType {
+                    Text(bindType)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                // Display Stack Count if > 1
+                if let maxCount = item.maxCount, maxCount > 1 {
+                    Text("Stack Size: \(maxCount)")  // Added Stack Size
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                // Display Equippable/Stackable flags
+                HStack(spacing: 8) {
+                    if item.isEquippable == true {
+                        Text("Equippable")
+                            .font(.caption2)
+                            .padding(.horizontal, 4)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(4)
+                    }
+                    if item.isStackable == true {
+                        Text("Stackable")
+                            .font(.caption2)
+                            .padding(.horizontal, 4)
+                            .background(Color.gray.opacity(0.2))
+                            .cornerRadius(4)
+                    }
+                }
+                .padding(.top, 2)
+
+            }
+
+            Spacer()  // Push item level badge to the right
+
+            // Item level badge
+            if let itemLevel = item.itemLevel {
+                Text("iLvl \(itemLevel)")
+                    .font(.caption)
+                    .padding(6)
+                    .background(Color.blue.opacity(0.2))
+                    .cornerRadius(6)
+            }
+        }
+        .padding()
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            .background(Color(PlatformColor.controlBackgroundColor))  // Platform-specific background
+        #elseif canImport(UIKit)
+            .background(Color(PlatformColor.secondarySystemBackground))  // Use secondarySystemBackground for header section
+        #endif
+        .cornerRadius(10)
+    }
+
+    /// Builds the footer section of the item detail view (ID, Link, Share).
+    /// - Parameter item: The `ClassicItem` data.
+    @ViewBuilder
+    private func itemFooterView(_ item: ClassicItem) -> some View {
+        VStack(alignment: .leading, spacing: 10) {  // Use VStack for multiple lines
+            // Stack Size
+            if let maxCount = item.maxCount, maxCount > 1 {
+                Text("Stack Size: \(maxCount)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            HStack {
+                // Display Item ID
+                Text("Item ID:").font(.caption).foregroundColor(.secondary)
+                Text("\(item.id)").font(.caption).foregroundColor(.secondary)
+
+                Spacer()  // Push link and share button to the right
+
+                // Link to ClassicDB
+                if let url = URL(string: "https://classicdb.ch/?item=\(item.id)") {
+                    Link(destination: url) {
+                        Image(systemName: "link").foregroundColor(.blue)
+                    }
+                    .padding(.trailing, 8)  // Spacing before share button
+                }
+
+                // Platform-specific Share button
+                #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+                    // macOS Share button using NSSharingServicePicker
+                    Button(action: { showShareSheet(item: item) }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.plain)  // Just show the image
+                    .foregroundColor(.blue)
+                    .background(  // Helper to get the underlying NSButton for anchoring
+                        RepresentedPlatformButton { nsButton in
+                            DispatchQueue.main.async { self.shareButton = nsButton }
+                        }
+                    )
+                #elseif canImport(UIKit)
+                    // iOS Share button using UIActivityViewController
+                    Button(action: { showShareSheet(item: item) }) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .foregroundColor(.blue)
+                #endif
+            }
+        }
+        .padding()  // Padding around the footer content
+    }
+
+    /// Helper to create consistently styled sections in the detail view.
+    /// - Parameter content: The content view builder for the section.
+    @ViewBuilder
+    private func detailSection<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()  // Embed the provided content
+        }
+        .padding()  // Padding inside the section
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            .background(Color(PlatformColor.controlBackgroundColor))  // Platform-specific background
+        #elseif canImport(UIKit)
+            .background(Color(PlatformColor.secondarySystemBackground))  // Use secondarySystemBackground for detail sections
+        #endif
+        .cornerRadius(10)  // Rounded corners for the section
+    }
+
+    /// Helper to format currency (copper) into gold, silver, copper strings.
+    /// - Parameter price: The price in copper.
+    /// - Parameter formattedPrice: Optional pre-formatted price strings from API.
+    @ViewBuilder
+    private func formatCurrency(_ price: Int, formattedPrice: ClassicItem.FormattedPrice? = nil)
+        -> some View
+    {
+        // Prefer using pre-formatted strings if available
+        if let display = formattedPrice,
+            display.gold != nil || display.silver != nil || display.copper != nil
+        {
+            HStack(spacing: 4) {
+                if let gold = display.gold { Text(gold).foregroundColor(.yellow) }
+                if let silver = display.silver { Text(silver).foregroundColor(.gray) }
+                if let copper = display.copper { Text(copper).foregroundColor(.orange) }
+            }
+            .font(.body)
+        } else {
+            // Fallback to calculating from copper value
+            let gold = price / 10000
+            let silver = (price % 10000) / 100
+            let copper = price % 100
+
+            HStack(spacing: 4) {
+                if gold > 0 { Text("\(gold)g").foregroundColor(.yellow) }
+                if silver > 0 { Text("\(silver)s").foregroundColor(.gray) }
+                if copper > 0 { Text("\(copper)c").foregroundColor(.orange) }
+                // Show 0c if price is 0 and no other units are shown
+                if gold == 0 && silver == 0 && copper == 0 && price == 0 {
+                    Text("0c").foregroundColor(.orange)
+                }
+            }
+            .font(.body)
+        }
+    }
+
+    // Helper struct to access the underlying NSButton from SwiftUI Button (macOS only)
+    #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+        struct RepresentedPlatformButton: PlatformViewRepresentable {
+            var configuration: (PlatformButton) -> Void
+
+            // Creates the NSButton instance
+            func makeNSView(context: Context) -> PlatformButton {
+                let button = PlatformButton()
+                configuration(button)  // Apply configuration (capture reference)
+                return button
+            }
+
+            // Updates the NSButton (not needed here)
+            func updateNSView(_ nsView: PlatformButton, context: Context) {}
+
+            // Define makeUIView for protocol conformance, though it won't be used on macOS
+            func makeUIView(context: Context) -> UIView { return UIView() }
+            func updateUIView(_ uiView: UIView, context: Context) {}
+        }
+    #endif
+
+    /// Builds the item icon view with a quality-colored border.
+    /// - Parameters:
+    ///   - iconName: The name of the icon file (without extension).
+    ///   - qualityType: The quality type string (e.g., "EPIC").
+    private func itemIconView(iconName: String?, qualityType: String) -> some View {
+        // Construct the icon URL from the icon name
+        let iconUrlString =
+            iconName != nil ? "https://wow.zamimg.com/images/wow/icons/large/\(iconName!).jpg" : nil
+        let iconUrl = URL(string: iconUrlString ?? "")
+
+        return ZStack {
             // Quality border
             RoundedRectangle(cornerRadius: 6)
-                .stroke(qualityColor(quality), lineWidth: 2)
-                .background(Color.black.cornerRadius(6))
+                .stroke(qualityColor(qualityType), lineWidth: 2)  // Color based on quality
+                .background(Color.black.cornerRadius(6))  // Black background behind icon
 
-            // Icon placeholder
-            Text(String(iconName.prefix(1)).uppercased())
-                .font(.headline)
-                .foregroundColor(.white)
+            // Icon using AsyncImage for network loading
+            if let url = iconUrl {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:  // While loading
+                        ProgressView()
+                            .frame(width: 30, height: 30)
+                    case .success(let image):  // On successful load
+                        image.resizable()
+                            .aspectRatio(contentMode: .fit)
+                    case .failure:  // On failure to load
+                        Image(systemName: "questionmark.diamond.fill")
+                            .foregroundColor(.gray)
+                            .font(.title2)
+                    @unknown default:  // Future cases
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: 50, maxHeight: 50)  // Constrain image size
+                .cornerRadius(4)  // Slightly rounded corners for the icon itself
+                .clipped()  // Clip icon to its bounds
+            } else {
+                // Fallback placeholder if iconName is nil or URL is invalid
+                Image(systemName: "questionmark.diamond.fill")
+                    .foregroundColor(.gray)
+                    .font(.title2)
+            }
         }
     }
 
     // MARK: - Functionality
 
-    /// Perform search based on current mode
-    private func performSearch() {
-        guard !searchText.isEmpty else { return }
+    /// Performs the search based on the current mode (ID or Name).
+    @MainActor
+    private func performSearch() async {
+        guard !searchText.isEmpty else { return }  // Exit if search text is empty
 
+        // Reset state for new search
         isLoading = true
         errorMessage = nil
         searchResults = []
         item = nil
 
-        if searchMode == .itemID {
-            // Search by item ID
-            guard let itemID = Int(searchText) else {
-                errorMessage = "Please enter a valid item ID"
-                isLoading = false
-                return
-            }
+        do {
+            if searchMode == .itemID {
+                // Validate and perform ID search
+                guard let itemID = Int(searchText) else {
+                    errorMessage = "Please enter a valid item ID"
+                    isLoading = false
+                    return
+                }
+                await loadItem(id: itemID)  // loadItem handles its own loading state
+            } else {
+                // Perform name search
+                let searchResponse = try await apiService.searchItems(name: searchText)
 
-            loadItem(id: itemID)
-        } else {
-            // Search by item name
-            // In a real app, this would call an API
-            // For now, simulate with mock data
-            simulateNameSearch(name: searchText)
+                // Map API results to preview model
+                searchResults = searchResponse.results.compactMap { result -> ClassicItemPreview? in
+                    // Icon name isn't directly available in search results, set to nil
+                    return ClassicItemPreview(
+                        id: result.data.id,
+                        name: result.data.name,
+                        qualityType: result.data.quality.type,
+                        iconName: nil
+                    )
+                }
+
+                // Set error message if no results found
+                if searchResults.isEmpty {
+                    errorMessage = "No items found matching '\(searchText)'"
+                }
+                isLoading = false  // Stop loading after name search completes
+            }
+        } catch let error as AppError {
+            errorMessage = "Search failed: \(error.localizedDescription)"
+            print("API Error during search: \(error)")
+            isLoading = false  // Ensure loading stops on error
+        } catch {
+            errorMessage =
+                "An unexpected error occurred during search: \(error.localizedDescription)"
+            print("Unexpected error during search: \(error)")
+            isLoading = false  // Ensure loading stops on error
         }
     }
 
-    /// Load item by ID
-    private func loadItem(id: Int) {
+    /// Loads detailed information for a specific item ID.
+    /// - Parameter id: The ID of the item to load.
+    @MainActor
+    private func loadItem(id: Int) async {
+        // Set loading state (even if called from performSearch)
         isLoading = true
         errorMessage = nil
-        searchResults = []
+        searchResults = []  // Clear search results when loading a specific item
         item = nil
+        var fetchedIconName: String? = nil
+        var weaponDetails: ClassicItem.WeaponInfo? = nil
 
-        // In a real app, this would use ClassicAPIService
-        // For now, simulate with mock data
-        simulateItemLoad(id: id)
-    }
+        do {
+            // Fetch main item data from API
+            let apiItem = try await apiService.item(id: id)
 
-    /// Simulate item loading (mock data)
-    private func simulateItemLoad(id: Int) {
-        // Simulate network delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            // Check if it's one of our mock items
-            let mockItem = self.getMockItem(id: id)
+            // Fetch media data (for icon) concurrently or subsequently
+            let mediaResponse = try? await apiService.fetchItemMedia(id: id)
+            fetchedIconName = mediaResponse?.getIconName()  // Extract icon name
 
-            if let mockItem = mockItem {
-                self.item = mockItem
+            // Extract weapon info if available using helper functions
+            if apiItem.previewItem?.weapon != nil {
+                weaponDetails = ClassicItem.WeaponInfo(
+                    damageString: apiItem.getWeaponDamageString() ?? "",
+                    speedString: apiItem.getWeaponAttackSpeedString() ?? "",
+                    dpsString: apiItem.getWeaponDpsString() ?? ""
+                )
+            }
 
-                // Add to recent items
-                self.addToRecentItems(
-                    ClassicItemPreview(
-                        id: mockItem.id,
-                        name: mockItem.name,
-                        quality: mockItem.quality,
-                        iconName: mockItem.iconName
-                    ))
+            // Map fetched API data to the local ClassicItem model
+            let fetchedItem = ClassicItem(
+                id: apiItem.id,
+                name: apiItem.name,
+                qualityType: apiItem.getQualityType(),
+                iconName: fetchedIconName,
+                itemType: apiItem.itemClass.name,
+                itemSubType: apiItem.itemSubclass.name,
+                inventorySlotName: apiItem.inventoryType.name,  // Ensure inventorySlotName is mapped
+                inventoryTypeName: apiItem.inventoryType.name,  // Map inventory type name
+                bindType: apiItem.getBindingString(),
+                itemLevel: apiItem.getItemLevel(),
+                requiredLevel: apiItem.requiredLevel,
+                requiredClasses: apiItem.getRequiredClassesString(),
+                sellPrice: apiItem.getSellPriceCopper(),  // Use helper for copper value
+                sellPriceDisplay: mapFormattedPrice(apiItem.previewItem?.sellPrice?.displayStrings),  // Map formatted sell price
+                maxCount: apiItem.maxCount,  // Added max stack count
+                isEquippable: apiItem.isEquippable,  // Added equippable flag
+                isStackable: apiItem.isStackable,  // Added stackable flag
+                stats: apiItem.getFormattedStats(),
+                itemSpells: apiItem.getFormattedSpells(),
+                sources: nil,  // Source info not directly available from this endpoint
+                armor: apiItem.previewItem?.armor?.value,
+                durability: apiItem.getDurabilityValue(),  // Use helper
+                description: apiItem.previewItem?.description,
+                weaponInfo: weaponDetails,
+                durabilityDisplayString: apiItem.previewItem?.durability?.displayString
+            )
+
+            // Update the view's state
+            self.item = fetchedItem
+
+            // Add to recent items list
+            let preview = ClassicItemPreview(
+                id: fetchedItem.id,
+                name: fetchedItem.name,
+                qualityType: fetchedItem.qualityType,
+                iconName: fetchedItem.iconName
+            )
+            self.addToRecentItems(preview)
+
+        } catch let error as AppError {
+            // Handle specific API errors (e.g., 404 Not Found)
+            if case .badStatus(let code) = error, code == 404 {
+                errorMessage = "Item with ID \(id) not found."
             } else {
-                self.errorMessage = "Item not found. Try another ID."
+                errorMessage = "Failed to load item \(id): \(error.localizedDescription)"
             }
+            print("API Error loading item \(id): \(error)")
+        } catch {
+            // Handle unexpected errors
+            errorMessage =
+                "An unexpected error occurred loading item \(id): \(error.localizedDescription)"
+            print("Unexpected error loading item \(id): \(error)")
+        }
 
-            self.isLoading = false
+        // Ensure loading indicator is turned off
+        isLoading = false
+    }
+
+    /// Returns the appropriate color for a given item quality type string.
+    /// - Parameter qualityType: The quality type (e.g., "EPIC", "RARE").
+    private func qualityColor(_ qualityType: String) -> Color {
+        switch qualityType.uppercased() {
+        case "POOR": return .gray
+        case "COMMON": return .white
+        case "UNCOMMON": return .green
+        case "RARE": return .blue
+        case "EPIC": return .purple
+        case "LEGENDARY": return .orange
+        case "ARTIFACT": return .yellow  // May not apply to Classic Era
+        default: return .white  // Default to common
         }
     }
 
-    /// Simulate name search (mock data)
-    private func simulateNameSearch(name: String) {
-        // Simulate network delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            // Mock search results
-            let lowerName = name.lowercased()
-            let results = self.phase1Items.filter {
-                $0.name.lowercased().contains(lowerName)
-            }
-
-            if results.isEmpty {
-                self.errorMessage = "No items found matching '\(name)'"
-            } else {
-                self.searchResults = results
-            }
-
-            self.isLoading = false
-        }
-    }
-
-    /// Get mock item by ID
-    private func getMockItem(id: Int) -> ClassicItem? {
-        // For demo purposes, just create mock items for our phase1Items list
-        if let preview = phase1Items.first(where: { $0.id == id }) {
-            // Create a detailed item from the preview
-            return createMockDetailedItem(from: preview)
-        }
-
-        return nil
-    }
-
-    /// Create a detailed item from a preview (mock data)
-    private func createMockDetailedItem(from preview: ClassicItemPreview) -> ClassicItem {
-        var itemType: String?
-        var itemSubType: String?
-        var bindType: String?
-        var itemLevel: Int?
-        var requiredLevel: Int = 0
-        var requiredClasses: String?
-        var sellPrice: Int?
-        var stats: [String] = []
-        var itemSpells: [String] = []
-        var sources: [String] = []
-
-        // Create mock data based on item ID
-        switch preview.id {
-        case 18832:  // Brutality Blade
-            itemType = "Weapon"
-            itemSubType = "One-Handed Sword"
-            bindType = "Binds when picked up"
-            itemLevel = 70
-            requiredLevel = 60
-            sellPrice = 15876
-            stats = [
-                "+9 Strength",
-                "+9 Agility",
-                "Damage: 86-161",
-                "Speed: 2.50",
-                "DPS: 49.4",
-            ]
-            sources = ["Molten Core - Garr", "Molten Core - Baron Geddon"]
-
-        case 18803:  // Finkle's Lava Dredger
-            itemType = "Weapon"
-            itemSubType = "Two-Handed Mace"
-            bindType = "Binds when picked up"
-            itemLevel = 70
-            requiredLevel = 60
-            sellPrice = 23948
-            stats = [
-                "+12 Strength",
-                "+22 Stamina",
-                "Damage: 223-335",
-                "Speed: 3.40",
-                "DPS: 82.1",
-            ]
-            sources = ["Molten Core - Ragnaros"]
-
-        case 18814:  // Choker of the Fire Lord
-            itemType = "Armor"
-            itemSubType = "Neck"
-            bindType = "Binds when picked up"
-            itemLevel = 78
-            requiredLevel = 60
-            sellPrice = 11422
-            stats = [
-                "+10 Stamina",
-                "+22 Intellect",
-                "+33 Spell Power",
-            ]
-            sources = ["Molten Core - Ragnaros"]
-
-        case 18821:  // Quick Strike Ring
-            itemType = "Armor"
-            itemSubType = "Finger"
-            bindType = "Binds when picked up"
-            itemLevel = 67
-            requiredLevel = 60
-            sellPrice = 8945
-            stats = [
-                "+5 Stamina",
-                "+5 Strength",
-                "+30 Attack Power",
-            ]
-            itemSpells = ["Equip: Improves your chance to hit by 1%."]
-            sources = ["Molten Core - Golemagg the Incinerator"]
-
-        case 16800:  // Arcanist Crown
-            itemType = "Armor"
-            itemSubType = "Cloth Head"
-            bindType = "Binds when picked up"
-            itemLevel = 66
-            requiredLevel = 60
-            requiredClasses = "Mage"
-            sellPrice = 9854
-            stats = [
-                "+20 Intellect",
-                "+10 Stamina",
-                "+12 Spell Power",
-            ]
-            itemSpells = [
-                "Set: (8) pieces - Increases the critical strike damage bonus of your Arcane and Fire spells by 3%."
-            ]
-            sources = ["Molten Core - Various bosses"]
-
-        case 16858:  // Lawbringer Chestguard
-            itemType = "Armor"
-            itemSubType = "Plate Chest"
-            bindType = "Binds when picked up"
-            itemLevel = 66
-            requiredLevel = 60
-            requiredClasses = "Paladin"
-            sellPrice = 10298
-            stats = [
-                "+17 Strength",
-                "+17 Stamina",
-                "+11 Intellect",
-            ]
-            itemSpells = [
-                "Set: (8) pieces - Your Flash of Light has a 25% chance to restore 60 mana when cast."
-            ]
-            sources = ["Molten Core - Various bosses"]
-
-        case 16865:  // Breastplate of Might
-            itemType = "Armor"
-            itemSubType = "Plate Chest"
-            bindType = "Binds when picked up"
-            itemLevel = 66
-            requiredLevel = 60
-            requiredClasses = "Warrior"
-            sellPrice = 10298
-            stats = [
-                "+27 Strength",
-                "+17 Stamina",
-            ]
-            itemSpells = [
-                "Set: (8) pieces - Your Defensive Stance now reduces damage taken by an additional 5%."
-            ]
-            sources = ["Molten Core - Various bosses"]
-
-        case 18264:  // Plans: Elemental Sharpening Stone
-            itemType = "Recipe"
-            itemSubType = "Blacksmithing"
-            bindType = "Binds when picked up"
-            itemLevel = 1
-            requiredLevel = 0
-            sellPrice = 100
-            itemSpells = ["Teaches you how to make an Elemental Sharpening Stone."]
-            sources = ["Molten Core - Trash mobs"]
-
-        default:
-            // Default values for unknown items
-            itemType = "Unknown"
-            itemSubType = "Miscellaneous"
-            bindType = "Unknown"
-            itemLevel = 1
-            requiredLevel = 1
-            sellPrice = 0
-            stats = []
-            sources = ["Unknown source"]
-        }
-
-        return ClassicItem(
-            id: preview.id,
-            name: preview.name,
-            quality: preview.quality,
-            iconName: preview.iconName,
-            itemType: itemType,
-            itemSubType: itemSubType,
-            bindType: bindType,
-            itemLevel: itemLevel,
-            requiredLevel: requiredLevel,
-            requiredClasses: requiredClasses,
-            sellPrice: sellPrice,
-            stats: stats,
-            itemSpells: itemSpells,
-            sources: sources
-        )
-    }
-
-    /// Get color for item quality
-    private func qualityColor(_ quality: Int) -> Color {
-        switch quality {
-        case 0: return .gray  // Poor
-        case 1: return .white  // Common
-        case 2: return .green  // Uncommon
-        case 3: return .blue  // Rare
-        case 4: return .purple  // Epic
-        case 5: return .orange  // Legendary
-        default: return .white
-        }
-    }
-
-    /// Load recent items from UserDefaults
+    /// Loads the list of recently viewed items from UserDefaults.
     private func loadRecentItems() {
-        if let data = UserDefaults.standard.data(forKey: "RecentItems") {
-            do {
-                let items = try JSONDecoder().decode([ClassicItemPreview].self, from: data)
-                recentItems = items
-            } catch {
-                print("Failed to load recent items: \(error)")
-            }
+        guard let data = UserDefaults.standard.data(forKey: "RecentItems") else {
+            recentItems = []  // No saved data
+            return
+        }
+        do {
+            // Decode the saved data
+            recentItems = try JSONDecoder().decode([ClassicItemPreview].self, from: data)
+        } catch {
+            // Handle decoding errors (e.g., data format changed)
+            print("Failed to decode recent items: \(error). Clearing potentially corrupted data.")
+            UserDefaults.standard.removeObject(forKey: "RecentItems")  // Clear corrupted data
+            recentItems = []
         }
     }
 
-    /// Add an item to recent items
+    /// Adds an item to the recent items list and saves to UserDefaults.
+    /// - Parameter item: The `ClassicItemPreview` to add.
     private func addToRecentItems(_ item: ClassicItemPreview) {
-        // Check if item already exists
-        if let existingIndex = recentItems.firstIndex(where: { $0.id == item.id }) {
-            // Move to front
-            recentItems.remove(at: existingIndex)
-            recentItems.insert(item, at: 0)
-        } else {
-            // Add to front
-            recentItems.insert(item, at: 0)
-
-            // Limit to 10 items
-            if recentItems.count > 10 {
-                recentItems.removeLast()
-            }
+        // Remove item if it already exists to move it to the front
+        recentItems.removeAll { $0.id == item.id }
+        // Insert at the beginning
+        recentItems.insert(item, at: 0)
+        // Limit the list size (e.g., to 10 items)
+        if recentItems.count > 10 {
+            recentItems.removeLast()
         }
-
-        // Save to UserDefaults
+        // Save the updated list to UserDefaults
         do {
             let data = try JSONEncoder().encode(recentItems)
             UserDefaults.standard.set(data, forKey: "RecentItems")
@@ -780,10 +844,96 @@ struct ItemLookupView: View {
         }
     }
 
-    /// Hide keyboard
+    /// Shows the platform-specific share sheet for the given item.
+    /// - Parameter item: The `ClassicItem` to share.
+    private func showShareSheet(item: ClassicItem) {
+        let shareText =
+            "Check out this Classic WoW item: \(item.name) (ID: \(item.id)) - via WoWBud"
+
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            // macOS: Use NSSharingServicePicker anchored to the button
+            sharingServicePicker = PlatformSharingPicker(items: [shareText])
+            if let button = shareButton {
+                sharingServicePicker.show(relativeTo: .zero, of: button, preferredEdge: .minY)
+            } else {
+                print("Warning: Share button reference not available for anchoring picker.")
+                // Consider a fallback presentation method if needed
+            }
+        #elseif canImport(UIKit)
+            // iOS: Use UIActivityViewController
+            guard let sourceView = findSourceView() else {
+                print("Warning: Could not find source view for iOS share sheet.")
+                return
+            }
+            let activityViewController = UIActivityViewController(
+                activityItems: [shareText], applicationActivities: nil)
+
+            // Configure popover for iPad
+            if let popoverController = activityViewController.popoverPresentationController {
+                popoverController.sourceView = sourceView
+                popoverController.sourceRect = sourceView.bounds  // Adjust rect as needed
+            }
+
+            // Present the share sheet
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                let rootViewController = windowScene.windows.first?.rootViewController
+            else { return }
+            rootViewController.present(activityViewController, animated: true, completion: nil)
+        #endif
+    }
+
+    #if canImport(UIKit)
+        /// Helper function to find a source UIView for the share sheet on iOS.
+        /// Needs refinement for specific button anchoring.
+        private func findSourceView() -> UIView? {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                let window = windowScene.windows.first
+            else { return nil }
+            // Use the root view controller's view as a fallback source
+            return window.rootViewController?.view ?? window
+        }
+    #endif
+
+    /// Hides the keyboard in a platform-agnostic way.
     private func hideKeyboard() {
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #if canImport(AppKit) && !targetEnvironment(macCatalyst)
+            // macOS: Resign first responder status for the key window
+            DispatchQueue.main.async {
+                platformApp.keyWindow?.makeFirstResponder(nil)
+            }
+        #elseif canImport(UIKit)
+            // iOS: Send resignFirstResponder action globally
+            platformApp.sendAction(
+                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
+    }
+
+    /// Helper function to map API's DisplayStrings to ClassicItem.FormattedPrice
+    private func mapFormattedPrice(_ displayStrings: Item.PreviewItem.SellPrice.DisplayStrings?)
+        -> ClassicItem.FormattedPrice?
+    {
+        guard let display = displayStrings else { return nil }
+        return ClassicItem.FormattedPrice(
+            gold: display.gold,
+            silver: display.silver,
+            copper: display.copper
+        )
+    }
+
+    /// Helper function to build the type/subtype/inventory string
+    private func buildTypeString(item: ClassicItem) -> String {
+        var components: [String] = []
+        if let type = item.inventoryTypeName { components.append(type) }  // Prefer inventory slot name
+        if let subType = item.itemSubType { components.append(subType) }
+        // Add itemType (Armor/Weapon) only if inventoryTypeName is missing or different from itemType
+        if let itemType = item.itemType,
+            item.inventoryTypeName == nil || item.inventoryTypeName != itemType
+        {
+            if !components.contains(itemType) {  // Avoid duplicates like "Plate • Plate"
+                components.append(itemType)
+            }
+        }
+        return components.joined(separator: " • ")
     }
 }
 
@@ -799,26 +949,53 @@ enum SearchMode {
 struct ClassicItemPreview: Identifiable, Codable {
     let id: Int
     let name: String
-    let quality: Int
-    let iconName: String
+    let qualityType: String  // Store quality type string (e.g., "EPIC")
+    let iconName: String?  // Store icon filename (optional)
 }
 
 /// Classic item with detailed info
-struct ClassicItem {
+struct ClassicItem {  // This struct is local to the View
     let id: Int
     let name: String
-    let quality: Int
-    let iconName: String
-    let itemType: String?
-    let itemSubType: String?
-    let bindType: String?
+    let qualityType: String  // e.g., "EPIC"
+    let iconName: String?  // Just the filename, e.g., "inv_sword_43"
+    let itemType: String?  // From ItemClass.name (e.g., "Armor")
+    let itemSubType: String?  // From ItemSubclass.name (e.g., "Cloth")
+    let inventorySlotName: String?  // e.g., "Chest", "Trinket"
+    let inventoryTypeName: String?  // From InventoryType.name (e.g., "Chest")
+    let bindType: String?  // e.g., "Binds when picked up"
     let itemLevel: Int?
-    let requiredLevel: Int
-    let requiredClasses: String?
-    let sellPrice: Int?
-    let stats: [String]
-    let itemSpells: [String]?
-    let sources: [String]?
+    let requiredLevel: Int?  // Changed to optional to handle API variability
+    let requiredClasses: String?  // e.g., "Warrior, Paladin" - needs mapping if API gives IDs
+    let sellPrice: Int?  // Sell price in copper
+    let sellPriceDisplay: FormattedPrice?  // Formatted g/s/c strings from API
+    let maxCount: Int?  // Max stack size
+    let isEquippable: Bool?
+    let isStackable: Bool?
+    let stats: [String]  // Pre-formatted stat strings (simplest approach)
+    // Or: let stats: [ItemStat] if you want structured data here
+    let itemSpells: [String]?  // Pre-formatted spell descriptions
+    let sources: [String]?  // Pre-formatted source descriptions
+    // --- New Fields ---
+    let armor: Int?  // Armor value
+    let durability: Int?  // Durability value
+    let description: String?  // Flavor text
+    let weaponInfo: WeaponInfo?  // Weapon specific stats
+    let durabilityDisplayString: String?  // Add field for pre-formatted durability string
+
+    // Nested struct for weapon details
+    struct WeaponInfo: Hashable {  // Conforms to Hashable if needed
+        let damageString: String  // e.g., "37 - 69 Damage"
+        let speedString: String  // e.g., "Speed 1.50"
+        let dpsString: String  // e.g., "(35.3 damage per second)"
+    }
+
+    // Nested struct for formatted price strings
+    struct FormattedPrice: Hashable {
+        let gold: String?
+        let silver: String?
+        let copper: String?
+    }
 }
 
 struct ItemLookupView_Previews: PreviewProvider {
