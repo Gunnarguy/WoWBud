@@ -10,13 +10,13 @@ import SwiftUI
 struct ResetTimerView: View {
     // Selected region
     @State private var selectedRegion: Region = .us
-    
+
     // Current time
     @State private var currentTime = Date()
-    
+
     // Timer for keeping the view updated
     @State private var timer: Timer? = nil
-    
+
     // Date formatter
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -24,7 +24,7 @@ struct ResetTimerView: View {
         formatter.timeStyle = .short
         return formatter
     }()
-    
+
     // Time formatter (for remaining time)
     private let timeFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
@@ -33,7 +33,7 @@ struct ResetTimerView: View {
         formatter.maximumUnitCount = 3
         return formatter
     }()
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -44,12 +44,12 @@ struct ResetTimerView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
-                
+
                 // Header with current time
                 VStack(spacing: 4) {
                     Text("Current Time")
                         .font(.headline)
-                    
+
                     Text(dateFormatter.string(from: currentTime))
                         .font(.subheadline)
                 }
@@ -58,7 +58,7 @@ struct ResetTimerView: View {
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
                 .padding(.horizontal)
-                
+
                 // Weekly raid reset
                 resetCardView(
                     title: "Weekly Reset",
@@ -66,7 +66,7 @@ struct ResetTimerView: View {
                     resetDate: weeklyResetDate,
                     iconName: "arrow.clockwise"
                 )
-                
+
                 // Molten Core / Onyxia timer
                 // These have a special opening date for the Anniversary servers
                 let moltenCoreOpenDate = openingDateFor(raid: .moltenCore)
@@ -87,7 +87,7 @@ struct ResetTimerView: View {
                         iconName: "flame.fill"
                     )
                 }
-                
+
                 // Blackwing Lair timer
                 let bwlOpenDate = openingDateFor(raid: .blackwingLair)
                 if currentTime < bwlOpenDate {
@@ -107,7 +107,7 @@ struct ResetTimerView: View {
                         iconName: "dragon"
                     )
                 }
-                
+
                 // ZG timer
                 let zgOpenDate = openingDateFor(raid: .zulGurub)
                 if currentTime < zgOpenDate {
@@ -127,7 +127,7 @@ struct ResetTimerView: View {
                         iconName: "timer"
                     )
                 }
-                
+
                 // AQ timer
                 let aqOpenDate = openingDateFor(raid: .ahnQiraj)
                 if currentTime < aqOpenDate {
@@ -147,7 +147,7 @@ struct ResetTimerView: View {
                         iconName: "ant"
                     )
                 }
-                
+
                 // Naxx timer
                 let naxxOpenDate = openingDateFor(raid: .naxxramas)
                 if currentTime < naxxOpenDate {
@@ -167,7 +167,7 @@ struct ResetTimerView: View {
                         iconName: "staroflife"
                     )
                 }
-                
+
                 // TBC countdown
                 let tbcDate = openingDateFor(raid: .burningCrusade)
                 if currentTime < tbcDate {
@@ -179,12 +179,12 @@ struct ResetTimerView: View {
                         iconName: "portal"
                     )
                 }
-                
+
                 // Info block
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Anniversary Server Info")
                         .font(.headline)
-                    
+
                     Text("• Fresh servers launched: Nov 21, 2024")
                     Text("• Weekly reset: \(selectedRegion == .us ? "Tuesday" : "Wednesday")")
                     Text("• Hardcore characters remain in Classic Era")
@@ -194,7 +194,7 @@ struct ResetTimerView: View {
                 .background(Color(.secondarySystemBackground))
                 .cornerRadius(10)
                 .padding(.horizontal)
-                
+
                 // Attribution
                 Text("Data for WoW Classic 20th Anniversary")
                     .font(.caption)
@@ -216,41 +216,43 @@ struct ResetTimerView: View {
             timer = nil
         }
     }
-    
+
     // MARK: - Subviews
-    
+
     /// View for displaying a reset timer card
-    private func resetCardView(title: String, subtitle: String, resetDate: Date, iconName: String) -> some View {
+    private func resetCardView(title: String, subtitle: String, resetDate: Date, iconName: String)
+        -> some View
+    {
         VStack(spacing: 12) {
             // Header
             HStack {
                 Image(systemName: iconName)
                     .font(.title2)
                     .foregroundColor(.blue)
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.headline)
-                    
+
                     Text(subtitle)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
             }
-            
+
             Divider()
-            
+
             // Time remaining
             VStack(spacing: 4) {
                 Text("Next Reset")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                
+
                 Text(dateFormatter.string(from: resetDate))
                     .font(.callout)
-                
+
                 let remainingTime = resetDate.timeIntervalSince(currentTime)
                 if remainingTime > 0 {
                     Text(timeFormatter.string(from: remainingTime) ?? "")
@@ -270,27 +272,29 @@ struct ResetTimerView: View {
         .cornerRadius(10)
         .padding(.horizontal)
     }
-    
+
     /// View for displaying a countdown to raid opening
-    private func countdownCardView(title: String, subtitle: String, targetDate: Date, iconName: String) -> some View {
+    private func countdownCardView(
+        title: String, subtitle: String, targetDate: Date, iconName: String
+    ) -> some View {
         VStack(spacing: 12) {
             // Header
             HStack {
                 Image(systemName: iconName)
                     .font(.title2)
                     .foregroundColor(.orange)
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.headline)
-                    
+
                     Text(subtitle)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 // Badge for "coming soon"
                 Text("Coming Soon")
                     .font(.caption)
@@ -300,18 +304,18 @@ struct ResetTimerView: View {
                     .foregroundColor(.white)
                     .cornerRadius(8)
             }
-            
+
             Divider()
-            
+
             // Time until opening
             VStack(spacing: 4) {
                 Text("Opens On")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                
+
                 Text(dateFormatter.string(from: targetDate))
                     .font(.callout)
-                
+
                 let remainingTime = targetDate.timeIntervalSince(currentTime)
                 if remainingTime > 0 {
                     Text(timeFormatter.string(from: remainingTime) ?? "")
@@ -331,34 +335,47 @@ struct ResetTimerView: View {
         .cornerRadius(10)
         .padding(.horizontal)
     }
-    
+
     // MARK: - Helper functions
-    
-    /// Get the next weekly reset date
+
+    /// Get the next weekly reset date based on the selected region.
+    /// Uses UTC times: US Tuesday 15:00, EU Wednesday 07:00.
     private var weeklyResetDate: Date {
-        let calendar = Calendar.current
+        // Use the centralized ResetSchedule logic
+        return ResetSchedule.next(for: selectedRegion, from: currentTime)
+
+        /* // Original logic kept for reference, now uses ResetSchedule.next
+        let calendar = Calendar.current // Uses local time zone implicitly
         
-        // Get current components
-        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: currentTime)
+        // Get current components in local time zone
+        var components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second, .timeZone], from: currentTime)
         
-        // Set time to reset time (3am US, 7am EU)
-        components.hour = selectedRegion == .us ? 15 : 7 // US: 3pm UTC (7am PST), EU: 7am UTC
+        // Set time to reset time in UTC
+        // US: 15:00 UTC (e.g., 8am PDT, 9am MDT)
+        // EU: 07:00 UTC (e.g., 8am CET, 9am CEST)
+        components.hour = selectedRegion == .us ? 15 : 7
         components.minute = 0
         components.second = 0
+        components.timeZone = TimeZone(secondsFromGMT: 0) // Specify UTC for these components
         
         // Set weekday to reset day (Tuesday for US, Wednesday for EU)
         components.weekday = selectedRegion == .us ? 3 : 4 // 3 = Tuesday, 4 = Wednesday
         
-        // Get the date of the reset
-        let resetDate = calendar.nextDate(
-            after: currentTime,
+        // We need to find the *next* occurrence in the *UTC* calendar
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        
+        // Get the date of the reset using the UTC calendar and components
+        let resetDate = utcCalendar.nextDate(
+            after: currentTime, // Find next occurrence after current time
             matching: components,
-            matchingPolicy: .nextTime
-        ) ?? currentTime
+            matchingPolicy: .nextTime // Find the very next time match
+        ) ?? currentTime // Fallback to current time if calculation fails
         
         return resetDate
+        */
     }
-    
+
     /// Get the next reset date for a specific raid
     private func nextRaidResetDate(for raid: Raid) -> Date {
         switch raid {
@@ -370,43 +387,64 @@ struct ResetTimerView: View {
             return weeklyResetDate
         }
     }
-    
-    /// Get reset date for a specific interval
+
+    /// Get reset date for a specific interval (e.g., 3 days for ZG).
+    /// Uses a reference date and calculates forward based on UTC reset times.
     private func getNextIntervalReset(days: Int) -> Date {
-        let calendar = Calendar.current
-        
+        // Use UTC calendar for consistency
+        var calendarUTC = Calendar(identifier: .gregorian)
+        calendarUTC.timeZone = TimeZone(secondsFromGMT: 0)!
+
         // Get reference reset date (first reset was Nov 21, 2024 at reset time)
+        // Use UTC components for the reference date
         let referenceComponents = DateComponents(
+            timeZone: TimeZone(secondsFromGMT: 0),  // Specify UTC
             year: 2024,
             month: 11,
-            day: 21,
-            hour: selectedRegion == .us ? 15 : 7,
+            day: 21,  // Thursday - This might need adjustment if the *first* reset wasn't on launch day
+            hour: selectedRegion == .us ? 15 : 7,  // Use correct UTC reset hour
             minute: 0,
             second: 0
         )
-        
-        let referenceDate = calendar.date(from: referenceComponents) ?? currentTime
-        
-        // Find how many days since reference
-        let daysSinceReference = calendar.dateComponents([.day], from: referenceDate, to: currentTime).day ?? 0
-        
-        // Find how many complete intervals have passed
-        let completedIntervals = daysSinceReference / days
-        
-        // Next reset is after the completed intervals
-        let nextResetDays = (completedIntervals + 1) * days
-        
-        return calendar.date(byAdding: .day, value: nextResetDays, to: referenceDate) ?? currentTime
+
+        // Ensure reference date is calculated correctly in UTC
+        guard let referenceDate = calendarUTC.date(from: referenceComponents) else {
+            return currentTime  // Fallback
+        }
+
+        // Calculate the time elapsed since the reference date in UTC
+        let timeSinceReference = currentTime.timeIntervalSince(referenceDate)
+
+        // If the current time is before the reference date, return the reference date
+        if timeSinceReference < 0 {
+            return referenceDate
+        }
+
+        // Calculate the number of full intervals passed
+        let intervalSeconds = Double(days * 24 * 60 * 60)
+        let intervalsPassed = floor(timeSinceReference / intervalSeconds)
+
+        // Calculate the date of the next reset by adding intervals to the reference date
+        let nextResetDate = referenceDate.addingTimeInterval(
+            (intervalsPassed + 1) * intervalSeconds)
+
+        return nextResetDate
     }
-    
-    /// Get opening date for a raid
+
+    /// Get opening date for a raid based on Anniversary schedule.
+    /// Uses UTC reset times for consistency.
     private func openingDateFor(raid: Raid) -> Date {
-        let calendar = Calendar.current
+        // Use UTC calendar for consistency
+        var calendarUTC = Calendar(identifier: .gregorian)
+        calendarUTC.timeZone = TimeZone(secondsFromGMT: 0)!
+
         var dateComponents = DateComponents()
-        dateComponents.hour = selectedRegion == .us ? 15 : 7 // Reset time
+        // Set components in UTC
+        dateComponents.timeZone = TimeZone(secondsFromGMT: 0)
+        dateComponents.hour = selectedRegion == .us ? 15 : 7  // Reset time in UTC
         dateComponents.minute = 0
         dateComponents.second = 0
-        
+
         switch raid {
         case .moltenCore:
             // Phase 2 - December 12, 2024
@@ -439,8 +477,8 @@ struct ResetTimerView: View {
             dateComponents.month = 1
             dateComponents.day = 29
         }
-        
-        return calendar.date(from: dateComponents) ?? currentTime
+
+        return calendarUTC.date(from: dateComponents) ?? currentTime
     }
 }
 

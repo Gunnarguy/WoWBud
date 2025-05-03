@@ -16,9 +16,9 @@ public struct Spell: Codable, Hashable, Identifiable, Sendable {
         case baseCoefficient = "spell_power_coefficient"
     }
 
-    /// Scaled coefficient = c × SP × talentMod
-    public func scaledCoefficient(spellPower: Double, talentMod: Double = 1) -> Double? {
+    /// Scaled coefficient = c × SP
+    public func scaledCoefficient(spellPower: Double) -> Double? {
         guard let base = baseCoefficient else { return nil }
-        return base * spellPower * talentMod
+        return base * spellPower
     }
 }

@@ -68,10 +68,6 @@ struct ServerInfoView: View {
 
             // Footer
             VStack(spacing: 4) {
-                Text("Status indicators are simulated")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
                 Text("20th Anniversary Classic Servers")
                     .font(.caption2)
                     .foregroundColor(.secondary)

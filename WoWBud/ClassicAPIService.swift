@@ -204,13 +204,6 @@ actor ClassicAPIService {
             PlayableRacesIndex.self, endpoint: .init(path: "/data/wow/playable-race/index"))
     }
 
-    // Talent tree
-    func talentTree(classID: Int) async throws -> TalentTree {
-        // This is a mock endpoint since talent trees work differently in Classic
-        // In a real app, this would fetch from a different source or use a proper endpoint
-        try await fetch(TalentTree.self, endpoint: .init(path: "/data/wow/talent-tree/\(classID)"))
-    }
-
     /// Fetches the media details (like icon URL) for a specific item using the `static-classic1x` namespace.
     /// - Parameter id: The ID of the item.
     /// - Returns: An `ItemMediaResponse` containing asset information.
