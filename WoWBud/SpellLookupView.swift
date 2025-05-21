@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(AppKit) && !targetEnvironment(macCatalyst)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// View for looking up spell details by ID.
 struct SpellLookupView: View {
@@ -79,9 +84,8 @@ struct SpellLookupView: View {
 
     /// Fetches spell data using the DataBridge.
     private func fetchSpell() async {
-        // Hide keyboard
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        // Hide keyboard using a platform agnostic helper
+        hideKeyboard()
 
         // Reset state before fetching
         errorMessage = nil
@@ -122,6 +126,18 @@ struct SpellLookupView: View {
         }
 
         isLoading = false  // Stop loading indicator
+    }
+
+    /// Dismisses the keyboard across platforms.
+    private func hideKeyboard() {
+#if canImport(AppKit) && !targetEnvironment(macCatalyst)
+        // macOS: resign first responder for the key window
+        DispatchQueue.main.async { NSApp.keyWindow?.makeFirstResponder(nil) }
+#elseif canImport(UIKit)
+        // iOS: send resign action globally
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+#endif
     }
 }
 
