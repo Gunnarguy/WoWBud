@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 /// Thread-safe async façade for Blizzard "classic-era" namespace.
 /// All mutable state isolated to the actor.
@@ -173,12 +174,11 @@ actor ClassicAPIService {
         }
     }
 
-    /// Searches for items by name within the `static-classic1x` namespace.
+    /// Searches for items by name using the available Classic namespaces.
+    /// Results from multiple namespaces are combined and deduplicated.
     /// - Parameter name: The name of the item to search for.
-    /// - Returns: An `ItemSearchResponse` containing the search results.
-    /// - Throws: `AppError` or other errors if the search fails.
+    /// - Returns: An `ItemSearchResponse` containing all found results.
     func searchItems(name: String) async throws -> ItemSearchResponse {
-        // Construct base query parameters for the search
         let params = [
             URLQueryItem(name: "name.\(locale)", value: name),
             URLQueryItem(name: "orderby", value: "id"),
@@ -186,46 +186,59 @@ actor ClassicAPIService {
         ]
         let searchEndpoint = Endpoint(path: "/data/wow/search/item", params: params)
 
-        // Try the classic1x namespace first
-        do {
-            let response = try await fetch(ItemSearchResponse.self, endpoint: searchEndpoint)
-            if response.pageCount > 0 { return response }
-        } catch AppError.badStatus(code: 404) {
-            print("Search for '\(name)' not found in \(classic1xNamespace). Trying classic-era…")
-        } catch {
-            print("Error searching '\(name)' in \(classic1xNamespace): \(error)")
-            throw error
+<<<<<<< HEAD
+        // Helper closure to perform a search within a specific namespace
+        func search(in namespace: String?) async -> [ItemSearchResult] {
+            do {
+                let response = try await fetch(
+                    ItemSearchResponse.self,
+                    endpoint: searchEndpoint,
+                    namespaceOverride: namespace
+                )
+                return response.results
+            } catch {
+                // Log and treat any failure as no results for this namespace
+                let ns = namespace ?? classic1xNamespace
+                #if DEBUG
+                os_log("Search error in %{public}@: %{public}@", 
+                       log: .default, type: .debug, ns, error.localizedDescription)
+                #endif
+                return []
+            }
         }
 
-        // Fallback to classic-era namespace
-        do {
-            let response = try await fetch(
-                ItemSearchResponse.self,
-                endpoint: searchEndpoint,
-                namespaceOverride: classicEraNamespace
-            )
-            if response.pageCount > 0 { return response }
-        } catch AppError.badStatus(code: 404) {
-            print("Search for '\(name)' not found in \(classicEraNamespace). Trying classic…")
-        } catch {
-            print("Error searching '\(name)' in \(classicEraNamespace): \(error)")
-            throw error
+        // Execute searches sequentially so we do not spam the API
+        var combined: [ItemSearchResult] = []
+        combined += await search(in: nil) // classic1x
+        combined += await search(in: classicEraNamespace)
+        combined += await search(in: classicNamespace)
+
+        // Deduplicate by item id
+        var seen = Set<Int>()
+        let deduped = combined.filter { result in
+            if seen.contains(result.data.id) {
+                return false
+            } else {
+                seen.insert(result.data.id)
+                return true
+            }
         }
 
-        // Final fallback to classic namespace
-        do {
-            return try await fetch(
-                ItemSearchResponse.self,
-                endpoint: searchEndpoint,
-                namespaceOverride: classicNamespace
-            )
-        } catch AppError.badStatus(code: 404) {
-            print("Search for '\(name)' returned no results in any namespace.")
-            return ItemSearchResponse(page: 1, pageSize: 0, maxPageSize: 100, pageCount: 0, results: [])
-        } catch {
-            print("Final error searching '\(name)': \(error)")
-            throw error
+        if deduped.isEmpty {
+            #if DEBUG
+            os_log("Search for '%{public}@' returned no results in any namespace", 
+                   log: .default, type: .debug, name)
+            #endif
         }
+
+        return ItemSearchResponse(
+            page: 1,
+            pageSize: deduped.count,
+            maxPageSize: 100,
+            pageCount: 1,
+            results: deduped
+        )
+    }
 
     // Class Endpoint
     func playableClass(id: Int) async throws -> PlayableClass {
@@ -255,8 +268,54 @@ actor ClassicAPIService {
     /// - Returns: An `ItemMediaResponse` containing asset information.
     func fetchItemMedia(id: Int) async throws -> ItemMediaResponse {
         let endpoint = Endpoint(path: "/data/wow/media/item/\(id)")
-        // Fetch using the default classic1x namespace
-        return try await fetch(ItemMediaResponse.self, endpoint: endpoint)
+
+        // Try primary namespace first
+        do {
+            return try await fetch(ItemMediaResponse.self, endpoint: endpoint)
+        } catch AppError.badStatus(code: 404) {
+            #if DEBUG
+            os_log("Media for item %{public}d not found in %{public}@. Trying classic-era…", 
+                   log: .default, type: .debug, id, classic1xNamespace)
+            #endif
+        }
+
+        // Fallback: classic-era
+        if let response = try await fetchWithFallbackNamespace(
+            id: id,
+            endpoint: endpoint,
+            namespace: classicEraNamespace,
+            notFoundMessage: "Media for item \(id) not found in \(classicEraNamespace). Trying classic…"
+        ) {
+            return response
+        }
+
+        // Final fallback: classic
+        return try await fetch(
+            ItemMediaResponse.self,
+            endpoint: endpoint,
+            namespaceOverride: classicNamespace
+        )
+    }
+
+    /// Helper to fetch with a fallback namespace and print a not-found message.
+    private func fetchWithFallbackNamespace(
+        id: Int,
+        endpoint: Endpoint,
+        namespace: String,
+        notFoundMessage: String
+    ) async throws -> ItemMediaResponse? {
+        do {
+            return try await fetch(
+                ItemMediaResponse.self,
+                endpoint: endpoint,
+                namespaceOverride: namespace
+            )
+        } catch AppError.badStatus(code: 404) {
+            #if DEBUG
+            os_log("%{public}@", log: .default, type: .debug, notFoundMessage)
+            #endif
+            return nil
+        }
     }
 
     // Item Class Index
