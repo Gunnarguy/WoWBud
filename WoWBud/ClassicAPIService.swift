@@ -249,6 +249,7 @@ actor ClassicAPIService {
             PlayableRacesIndex.self, endpoint: .init(path: "/data/wow/playable-race/index"))
     }
 
+
     /// Fetches the media details (like icon URL) for a specific item using the `static-classic1x` namespace.
     /// - Parameter id: The ID of the item.
     /// - Returns: An `ItemMediaResponse` containing asset information.
