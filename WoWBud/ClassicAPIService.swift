@@ -186,7 +186,6 @@ actor ClassicAPIService {
         ]
         let searchEndpoint = Endpoint(path: "/data/wow/search/item", params: params)
 
-<<<<<<< HEAD
         // Helper closure to perform a search within a specific namespace
         func search(in namespace: String?) async -> [ItemSearchResult] {
             do {

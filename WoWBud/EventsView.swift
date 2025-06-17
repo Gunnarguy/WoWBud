@@ -53,7 +53,7 @@ extension Date {
     /// It's often better to perform date calculations *within* the target time zone's context.
     func convertToTimeZone(_ timeZone: TimeZone) -> Date {
         let calendar = Calendar.current
-        var components = calendar.dateComponents(in: timeZone, from: self)
+        let _ = calendar.dateComponents(in: timeZone, from: self)
         // We just need the components relative to the target zone for calculations
         // Reconstructing the date might not be necessary if using Calendar methods directly
         // For simplicity in the calculation function, we'll work with components or adjusted dates.
