@@ -1222,8 +1222,8 @@ enum WeaponType: String, CaseIterable, Identifiable {
     var iconName: String {
         switch self {
         case .dagger: return "scissors"
-        case .oneHandedSword: return "slash"
-        case .twoHandedSword: return "slash.circle"
+        case .oneHandedSword: return "sword"
+        case .twoHandedSword: return "sword.circle"
         case .oneHandedMace: return "hammer"
         case .twoHandedMace: return "hammer.circle"
         case .oneHandedAxe: return "scissors"
