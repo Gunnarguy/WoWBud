@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 /// Thread-safe async façade for Blizzard "classic-era" namespace.
 /// All mutable state isolated to the actor.
@@ -197,7 +198,10 @@ actor ClassicAPIService {
             } catch {
                 // Log and treat any failure as no results for this namespace
                 let ns = namespace ?? classic1xNamespace
-                print("Search error in \(ns): \(error)")
+                #if DEBUG
+                os_log("Search error in %{public}@: %{public}@", 
+                       log: .default, type: .debug, ns, error.localizedDescription)
+                #endif
                 return []
             }
         }
@@ -220,7 +224,10 @@ actor ClassicAPIService {
         }
 
         if deduped.isEmpty {
-            print("Search for '\(name)' returned no results in any namespace")
+            #if DEBUG
+            os_log("Search for '%{public}@' returned no results in any namespace", 
+                   log: .default, type: .debug, name)
+            #endif
         }
 
         return ItemSearchResponse(
@@ -264,18 +271,20 @@ actor ClassicAPIService {
         do {
             return try await fetch(ItemMediaResponse.self, endpoint: endpoint)
         } catch AppError.badStatus(code: 404) {
-            print("Media for item \(id) not found in \(classic1xNamespace). Trying classic-era…")
+            #if DEBUG
+            os_log("Media for item %{public}d not found in %{public}@. Trying classic-era…", 
+                   log: .default, type: .debug, id, classic1xNamespace)
+            #endif
         }
 
         // Fallback: classic-era
-        do {
-            return try await fetch(
-                ItemMediaResponse.self,
-                endpoint: endpoint,
-                namespaceOverride: classicEraNamespace
-            )
-        } catch AppError.badStatus(code: 404) {
-            print("Media for item \(id) not found in \(classicEraNamespace). Trying classic…")
+        if let response = try await fetchWithFallbackNamespace(
+            id: id,
+            endpoint: endpoint,
+            namespace: classicEraNamespace,
+            notFoundMessage: "Media for item \(id) not found in \(classicEraNamespace). Trying classic…"
+        ) {
+            return response
         }
 
         // Final fallback: classic
@@ -284,6 +293,27 @@ actor ClassicAPIService {
             endpoint: endpoint,
             namespaceOverride: classicNamespace
         )
+    }
+
+    /// Helper to fetch with a fallback namespace and print a not-found message.
+    private func fetchWithFallbackNamespace(
+        id: Int,
+        endpoint: Endpoint,
+        namespace: String,
+        notFoundMessage: String
+    ) async throws -> ItemMediaResponse? {
+        do {
+            return try await fetch(
+                ItemMediaResponse.self,
+                endpoint: endpoint,
+                namespaceOverride: namespace
+            )
+        } catch AppError.badStatus(code: 404) {
+            #if DEBUG
+            os_log("%{public}@", log: .default, type: .debug, notFoundMessage)
+            #endif
+            return nil
+        }
     }
 
     // Item Class Index
