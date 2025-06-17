@@ -186,24 +186,46 @@ actor ClassicAPIService {
         ]
         let searchEndpoint = Endpoint(path: "/data/wow/search/item", params: params)
 
-        // Perform search only in the classic1x namespace
+        // Try the classic1x namespace first
         do {
-            // Fetch directly using the default namespace
             let response = try await fetch(ItemSearchResponse.self, endpoint: searchEndpoint)
-            // No need to combine/deduplicate as we only search one namespace
-            return response
+            if response.pageCount > 0 { return response }
         } catch AppError.badStatus(code: 404) {
-            // A 404 on search likely means no results, return an empty response
-            print("Search for '\(name)' returned 404 (no results found).")
-            return ItemSearchResponse(
-                page: 1, pageSize: 0, maxPageSize: 100, pageCount: 0, results: [])
+            print("Search for '\(name)' not found in \(classic1xNamespace). Trying classic-era…")
         } catch {
-            // Rethrow other errors
-            print("Error searching items for '\(name)': \(error)")
+            print("Error searching '\(name)' in \(classic1xNamespace): \(error)")
             throw error
         }
-        // REMOVED: Concurrent search across multiple namespaces and combining logic
-    }
+
+        // Fallback to classic-era namespace
+        do {
+            let response = try await fetch(
+                ItemSearchResponse.self,
+                endpoint: searchEndpoint,
+                namespaceOverride: classicEraNamespace
+            )
+            if response.pageCount > 0 { return response }
+        } catch AppError.badStatus(code: 404) {
+            print("Search for '\(name)' not found in \(classicEraNamespace). Trying classic…")
+        } catch {
+            print("Error searching '\(name)' in \(classicEraNamespace): \(error)")
+            throw error
+        }
+
+        // Final fallback to classic namespace
+        do {
+            return try await fetch(
+                ItemSearchResponse.self,
+                endpoint: searchEndpoint,
+                namespaceOverride: classicNamespace
+            )
+        } catch AppError.badStatus(code: 404) {
+            print("Search for '\(name)' returned no results in any namespace.")
+            return ItemSearchResponse(page: 1, pageSize: 0, maxPageSize: 100, pageCount: 0, results: [])
+        } catch {
+            print("Final error searching '\(name)': \(error)")
+            throw error
+        }
 
     // Class Endpoint
     func playableClass(id: Int) async throws -> PlayableClass {
