@@ -186,6 +186,7 @@ actor ClassicAPIService {
         ]
         let searchEndpoint = Endpoint(path: "/data/wow/search/item", params: params)
 
+<<<<<<< HEAD
         // Helper closure to perform a search within a specific namespace
         func search(in namespace: String?) async -> [ItemSearchResult] {
             do {
@@ -260,6 +261,7 @@ actor ClassicAPIService {
         try await fetch(
             PlayableRacesIndex.self, endpoint: .init(path: "/data/wow/playable-race/index"))
     }
+
 
     /// Fetches the media details (like icon URL) for a specific item using the `static-classic1x` namespace.
     /// - Parameter id: The ID of the item.

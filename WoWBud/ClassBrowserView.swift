@@ -953,7 +953,7 @@ struct ClassBrowserView: View {
                     .oneHandedMace, .twoHandedMace, .oneHandedAxe, .twoHandedAxe, .staff,
                     .fistWeapon, .dagger, .shield,
                 ],  // Shield is a weapon type
-                roles: ["Healer", "DPS"],  // Can also off-tank with gear
+                roles: ["Healer", "DPS"],  // Can also off-tank with talents/gear
                 coreAbilities: [
                     ClassicAbility(
                         id: 701, name: "Lightning Bolt", level: 1,
