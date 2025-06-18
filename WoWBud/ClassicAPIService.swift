@@ -21,16 +21,15 @@ actor ClassicAPIService {
     // MARK: - Constants (non-isolated, pure)
     nonisolated private let region = "us"
     nonisolated private let locale = "en_US"
-    // Namespace for Classic Era Anniversary Edition (1.15.x)
-    nonisolated private let classic1xNamespace = "static-classic1x"
-    // Fallback namespaces for older data sets
-    nonisolated private let classicEraNamespace = "static-classic-era"
-    nonisolated private let classicNamespace = "static-classic"
+    // Namespace for Classic Era Anniversary Edition (1.15.x) - now with region
+    nonisolated private let classic1xNamespace = "static-classic1x-us"
+    // Fallback namespaces for older data sets - now with region
+    nonisolated private let classicEraNamespace = "static-classic-era-us"
+    nonisolated private let classicNamespace = "static-classic-us"
     // nonisolated private let retailNamespace = "static-us"
 
     // MARK: - OAuth Token Management
-    private var currentAccessToken: String?
-    private var tokenExpirationTime: Date?
+    private var tokenResponse: TokenResponse?
 
     // Fetch Client ID and Secret from Secrets.swift (ensure these exist)
     nonisolated private let clientID = Secrets.clientID
@@ -56,7 +55,8 @@ actor ClassicAPIService {
     func fetch<T: Decodable & Sendable>(
         _ type: T.Type,
         endpoint: Endpoint,
-        namespaceOverride: String? = nil
+        namespaceOverride: String? = nil,
+        retryOnAuthError: Bool = true
     ) async throws -> T {
         // --- Get a valid OAuth token ---
         let token = try await getValidAccessToken()
@@ -69,15 +69,13 @@ actor ClassicAPIService {
         }
 
         // Use the override namespace if provided, otherwise default to classic1xNamespace
-        let effectiveNamespace = namespaceOverride ?? classic1xNamespace  // Use corrected default
+        let effectiveNamespace = namespaceOverride ?? classic1xNamespace
 
         comps.queryItems =
             endpoint.params + [
                 // Use the determined namespace
-                URLQueryItem(name: "namespace", value: "\(effectiveNamespace)-\(region)"),  // Construct full namespace
+                URLQueryItem(name: "namespace", value: effectiveNamespace),
                 URLQueryItem(name: "locale", value: locale),
-                // REMOVED: Token is now added via header below
-                // URLQueryItem(name: "access_token", value: Secrets.oauthToken),
             ]
 
         guard let url = comps.url else { throw AppError.invalidURL(comps.string ?? "") }
@@ -94,14 +92,11 @@ actor ClassicAPIService {
         guard let http = resp as? HTTPURLResponse,
             (200...299).contains(http.statusCode)
         else {
-            // Throw specific error for bad status codes
             let statusCode = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            // If 401/403, potentially invalidate token? For now, just throw.
-            if statusCode == 401 || statusCode == 403 {
-                print("Auth Error (\(statusCode)) - Token might be invalid.")
-                // Invalidate local token copy to force refetch next time
-                currentAccessToken = nil
-                tokenExpirationTime = nil
+            if (statusCode == 401 || statusCode == 403) && retryOnAuthError {
+                print("Auth Error (\(statusCode)) - Token might be invalid. Invalidating and retrying...")
+                self.tokenResponse = nil
+                return try await fetch(type, endpoint: endpoint, namespaceOverride: namespaceOverride, retryOnAuthError: false)
             }
             throw AppError.badStatus(code: statusCode)
         }
@@ -128,6 +123,28 @@ actor ClassicAPIService {
         try await fetch(Spell.self, endpoint: .init(path: "/data/wow/spell/\(id)"))
     }
 
+    /// Search for items by name
+    /// - Parameter name: The name or partial name to search for
+    /// - Returns: An `ItemSearchResponse` containing search results
+    func searchItems(name: String) async throws -> ItemSearchResponse {
+        let searchEndpoint = Endpoint(
+            path: "/data/wow/search/item",
+            params: [
+                URLQueryItem(name: "name.en_US", value: name),
+                URLQueryItem(name: "_page", value: "1"),
+                URLQueryItem(name: "_pageSize", value: "50")
+            ]
+        )
+        return try await fetch(ItemSearchResponse.self, endpoint: searchEndpoint)
+    }
+
+    /// Fetches item media by ID (alias for the existing media method)
+    /// - Parameter id: The ID of the item
+    /// - Returns: A `Media` object containing asset information
+    func fetchItemMedia(id: Int) async throws -> Media {
+        return try await media(id: id)
+    }
+
     // Item Endpoint - Simplified for Classic 1.x
     /// Fetches item details by ID using the `static-classic1x` namespace.
     /// - Parameter id: The ID of the item.
@@ -139,16 +156,17 @@ actor ClassicAPIService {
         // Try the Anniversary/Fresh namespace first
         do {
             print("ClassicAPIService: Requesting item \(id) in \(classic1xNamespace)")
-            return try await fetch(Item.self, endpoint: itemEndpoint)
+            return try await fetch(Item.self, endpoint: itemEndpoint, namespaceOverride: classic1xNamespace)
         } catch AppError.badStatus(code: 404) {
             print("Item \(id) not found in \(classic1xNamespace). Trying classic-era namespace…")
         } catch {
             print("Error fetching item \(id) from \(classic1xNamespace): \(error)")
-            throw error
+            // Do not rethrow; allow fallback to continue
         }
 
         // Fallback: try classic-era namespace
         do {
+            print("ClassicAPIService: Requesting item \(id) in \(classicEraNamespace)")
             return try await fetch(
                 Item.self,
                 endpoint: itemEndpoint,
@@ -158,260 +176,65 @@ actor ClassicAPIService {
             print("Item \(id) not found in \(classicEraNamespace). Trying classic namespace…")
         } catch {
             print("Error fetching item \(id) from \(classicEraNamespace): \(error)")
-            throw error
+            // Do not rethrow; allow fallback to continue
         }
 
         // Final fallback: classic namespace
         do {
+            print("ClassicAPIService: Requesting item \(id) in \(classicNamespace)")
             return try await fetch(
                 Item.self,
                 endpoint: itemEndpoint,
                 namespaceOverride: classicNamespace
             )
         } catch {
-            print("Final error fetching item \(id): \(error)")
+            print("API Error loading item \(id): \(error)")
             throw error
         }
     }
 
-    /// Searches for items by name using the available Classic namespaces.
-    /// Results from multiple namespaces are combined and deduplicated.
-    /// - Parameter name: The name of the item to search for.
-    /// - Returns: An `ItemSearchResponse` containing all found results.
-    func searchItems(name: String) async throws -> ItemSearchResponse {
-        let params = [
-            URLQueryItem(name: "name.\(locale)", value: name),
-            URLQueryItem(name: "orderby", value: "id"),
-            URLQueryItem(name: "_page", value: "1"),
-        ]
-        let searchEndpoint = Endpoint(path: "/data/wow/search/item", params: params)
+    /// Fetches media details (like an item's icon) by its ID.
+    /// It tries the primary classic namespace first, then falls back to the era-specific one.
+    /// - Parameter id: The ID of the media to fetch.
+    /// - Returns: A `Media` object containing asset information.
+    func media(id: Int) async throws -> Media {
+        let mediaEndpoint = Endpoint(path: "/data/wow/media/item/\(id)")
 
-        // Helper closure to perform a search within a specific namespace
-        func search(in namespace: String?) async -> [ItemSearchResult] {
-            do {
-                let response = try await fetch(
-                    ItemSearchResponse.self,
-                    endpoint: searchEndpoint,
-                    namespaceOverride: namespace
-                )
-                return response.results
-            } catch {
-                // Log and treat any failure as no results for this namespace
-                let ns = namespace ?? classic1xNamespace
-                #if DEBUG
-                os_log("Search error in %{public}@: %{public}@", 
-                       log: .default, type: .debug, ns, error.localizedDescription)
-                #endif
-                return []
-            }
-        }
-
-        // Execute searches sequentially so we do not spam the API
-        var combined: [ItemSearchResult] = []
-        combined += await search(in: nil) // classic1x
-        combined += await search(in: classicEraNamespace)
-        combined += await search(in: classicNamespace)
-
-        // Deduplicate by item id
-        var seen = Set<Int>()
-        let deduped = combined.filter { result in
-            if seen.contains(result.data.id) {
-                return false
-            } else {
-                seen.insert(result.data.id)
-                return true
-            }
-        }
-
-        if deduped.isEmpty {
-            #if DEBUG
-            os_log("Search for '%{public}@' returned no results in any namespace", 
-                   log: .default, type: .debug, name)
-            #endif
-        }
-
-        return ItemSearchResponse(
-            page: 1,
-            pageSize: deduped.count,
-            maxPageSize: 100,
-            pageCount: 1,
-            results: deduped
-        )
-    }
-
-    // Class Endpoint
-    func playableClass(id: Int) async throws -> PlayableClass {
-        try await fetch(PlayableClass.self, endpoint: .init(path: "/data/wow/playable-class/\(id)"))
-    }
-
-    // Classes Index
-    func playableClasses() async throws -> PlayableClassesIndex {
-        try await fetch(
-            PlayableClassesIndex.self, endpoint: .init(path: "/data/wow/playable-class/index"))
-    }
-
-    // Race Endpoint
-    func playableRace(id: Int) async throws -> PlayableRace {
-        try await fetch(PlayableRace.self, endpoint: .init(path: "/data/wow/playable-race/\(id)"))
-    }
-
-    // Races Index
-    func playableRaces() async throws -> PlayableRacesIndex {
-        try await fetch(
-            PlayableRacesIndex.self, endpoint: .init(path: "/data/wow/playable-race/index"))
-    }
-
-
-    /// Fetches the media details (like icon URL) for a specific item using the `static-classic1x` namespace.
-    /// - Parameter id: The ID of the item.
-    /// - Returns: An `ItemMediaResponse` containing asset information.
-    func fetchItemMedia(id: Int) async throws -> ItemMediaResponse {
-        let endpoint = Endpoint(path: "/data/wow/media/item/\(id)")
-
-        // Try primary namespace first
+        // Try the primary classic namespace first
         do {
-            return try await fetch(ItemMediaResponse.self, endpoint: endpoint)
+            return try await fetch(Media.self, endpoint: mediaEndpoint, namespaceOverride: classic1xNamespace)
         } catch AppError.badStatus(code: 404) {
-            #if DEBUG
-            os_log("Media for item %{public}d not found in %{public}@. Trying classic-era…", 
-                   log: .default, type: .debug, id, classic1xNamespace)
-            #endif
-        }
-
-        // Fallback: classic-era
-        if let response = try await fetchWithFallbackNamespace(
-            id: id,
-            endpoint: endpoint,
-            namespace: classicEraNamespace,
-            notFoundMessage: "Media for item \(id) not found in \(classicEraNamespace). Trying classic…"
-        ) {
-            return response
-        }
-
-        // Final fallback: classic
-        return try await fetch(
-            ItemMediaResponse.self,
-            endpoint: endpoint,
-            namespaceOverride: classicNamespace
-        )
-    }
-
-    /// Helper to fetch with a fallback namespace and print a not-found message.
-    private func fetchWithFallbackNamespace(
-        id: Int,
-        endpoint: Endpoint,
-        namespace: String,
-        notFoundMessage: String
-    ) async throws -> ItemMediaResponse? {
-        do {
-            return try await fetch(
-                ItemMediaResponse.self,
-                endpoint: endpoint,
-                namespaceOverride: namespace
-            )
-        } catch AppError.badStatus(code: 404) {
-            #if DEBUG
-            os_log("%{public}@", log: .default, type: .debug, notFoundMessage)
-            #endif
-            return nil
-        }
-    }
-
-    // Item Class Index
-    func itemClasses() async throws -> ItemClassesIndex {
-        try await fetch(ItemClassesIndex.self, endpoint: .init(path: "/data/wow/item-class/index"))
-    }
-
-    // Item Class Detail
-    func itemClass(id: Int) async throws -> ItemClassDetail {
-        try await fetch(ItemClassDetail.self, endpoint: .init(path: "/data/wow/item-class/\(id)"))
-    }
-
-    // Item Subclass Detail
-    func itemSubclass(classId: Int, subclassId: Int) async throws -> ItemSubclassDetail {
-        try await fetch(
-            ItemSubclassDetail.self,
-            endpoint: .init(path: "/data/wow/item-class/\(classId)/item-subclass/\(subclassId)"))
-    }
-
-    // MARK: - Private Helpers
-
-    /// Retrieves a valid OAuth access token, fetching a new one if necessary.
-    private func getValidAccessToken() async throws -> String {
-        // Check if current token exists and hasn't expired (with a small buffer)
-        if let token = currentAccessToken, let expiry = tokenExpirationTime,
-            expiry > Date().addingTimeInterval(60)
-        {
-            return token
-        }
-
-        // --- Fetch new token using Client Credentials Flow ---
-        print("Fetching new OAuth token...")
-        guard let url = URL(string: "https://\(region).battle.net/oauth/token") else {  // Corrected domain
-            throw AppError.oauth("Invalid token endpoint URL")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-
-        // Create credentials string
-        guard let credentialsData = "\(clientID):\(clientSecret)".data(using: .utf8) else {
-            throw AppError.oauth("Could not encode credentials")
-        }
-        let base64Credentials = credentialsData.base64EncodedString()
-        request.setValue("Basic \(base64Credentials)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-
-        // Add grant_type parameter to body
-        let body = "grant_type=client_credentials"
-        request.httpBody = body.data(using: .utf8)
-
-        // Make the request
-        do {
-            let (data, response) = try await ClassicAPIService.sharedSession.data(for: request)
-
-            // Check response status
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200
-            else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                print("OAuth token fetch failed with status: \(statusCode)")
-                print("Response body: \(String(data: data, encoding: .utf8) ?? "N/A")")
-                throw AppError.oauth("Token fetch failed with status \(statusCode)")
-            }
-
-            // Parse the response
-            let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-
-            // Store the new token and calculate expiration time
-            self.currentAccessToken = tokenResponse.accessToken
-            // expiresIn is in seconds, add it to the current date
-            self.tokenExpirationTime = Date().addingTimeInterval(
-                TimeInterval(tokenResponse.expiresIn))
-            print("Successfully fetched new OAuth token.")
-            return tokenResponse.accessToken
-
-        } catch let error as AppError {
-            // Rethrow AppError specifically
-            throw error
+            print("Media for item \(id) not found in \(classic1xNamespace). Trying classic-era…")
+            // Fall through to the next try block
         } catch {
-            // Wrap other errors in AppError.oauth
-            print("Error during OAuth token fetch: \(error)")
-            throw AppError.oauth(
-                "Token fetch network/decoding error: \(error.localizedDescription)")
+            // For other errors, we might want to log them but still try the fallback
+            print("An error occurred fetching media in \(classic1xNamespace): \(error)")
+        }
+
+        // Fallback to the classic-era namespace
+        do {
+            return try await fetch(Media.self, endpoint: mediaEndpoint, namespaceOverride: classicEraNamespace)
+        } catch {
+            print("Failed to fetch media from \(classicEraNamespace) as well: \(error)")
+            throw error // Rethrow the error from the last attempt
         }
     }
 
-    /// Structure to decode the OAuth token response.
-    private struct TokenResponse: Codable {
-        let accessToken: String
-        let tokenType: String
-        let expiresIn: Int  // Duration in seconds
+    // MARK: - OAuth Token Management
 
-        // Map snake_case keys from JSON to camelCase properties
-        enum CodingKeys: String, CodingKey {
-            case accessToken = "access_token"
-            case tokenType = "token_type"
-            case expiresIn = "expires_in"
+    /// Ensures a valid OAuth token is available, fetching a new one if needed.
+    /// This function is the single source of truth for getting a valid token.
+    /// - Returns: A valid OAuth access token string.
+    private func getValidAccessToken() async throws -> String {
+        if let existingToken = tokenResponse, !existingToken.isExpired {
+            return existingToken.accessToken
         }
+
+        print("Fetching new OAuth token...")
+        let newTokenResponse = try await OAuth.fetchToken(clientID: clientID, clientSecret: clientSecret)
+        self.tokenResponse = newTokenResponse
+        print("Successfully fetched new OAuth token.")
+        return newTokenResponse.accessToken
     }
 }
 
@@ -471,6 +294,12 @@ struct ItemSubclassDetail: Codable, Identifiable, Sendable {
 
 // MARK: - Search Response Structures
 
+/// Represents a single item returned in a search result from the API.
+struct ItemSearchResult: Codable, Sendable {
+    // The actual item data is nested inside the 'data' property.
+    let data: Item
+}
+
 /// Represents the overall response from an item search query.
 struct ItemSearchResponse: Codable, Sendable {
     let page: Int
@@ -478,72 +307,4 @@ struct ItemSearchResponse: Codable, Sendable {
     let maxPageSize: Int
     let pageCount: Int
     let results: [ItemSearchResult]  // Array of search result items
-}
-
-/// Represents a single item found in a search result.
-struct ItemSearchResult: Codable, Sendable, Identifiable {
-    var id: Int {  // Use item ID as the identifiable ID
-        return data.id
-    }
-    let data: ItemData  // Contains the core details of the item
-    let key: KeyReference  // Reference to the full item endpoint
-
-    /// Core data for an item within a search result.
-    struct ItemData: Codable, Sendable {
-        let id: Int
-        let name: String
-        let quality: Quality  // Item quality (e.g., Epic, Rare)
-        let media: MediaReference  // Reference to the item's media (icon)
-        // Add other fields if needed and available in the search response, like item_class, item_subclass, etc.
-    }
-
-    /// Reference to the full API endpoint for this item.
-    struct KeyReference: Codable, Sendable {
-        let href: String
-    }
-
-    /// Represents the quality of an item.
-    struct Quality: Codable, Sendable {
-        let type: String  // e.g., "EPIC", "RARE"
-        let name: String  // Localized name, e.g., "Epic", "Rare"
-    }
-
-    /// Reference to the item's media asset (usually the icon).
-    struct MediaReference: Codable, Sendable {
-        let id: Int
-        let key: KeyReference  // Reference to the media asset endpoint
-    }
-}
-
-// MARK: - Media Response Structure
-
-/// Represents the response from the item media endpoint.
-struct ItemMediaResponse: Codable, Sendable {
-    let assets: [MediaAsset]?  // Array of media assets (icon, etc.)
-    let id: Int  // The ID of the item this media belongs to
-
-    /// Represents a single media asset (like an icon).
-    struct MediaAsset: Codable, Sendable {
-        let key: String  // Type of asset, e.g., "icon"
-        let value: String  // URL to the asset
-        let fileDataId: Int?  // Optional file data ID
-    }
-
-    /// Helper function to extract the icon URL from the assets.
-    /// - Returns: The URL string for the icon, or nil if not found.
-    func getIconURL() -> String? {
-        return assets?.first(where: { $0.key == "icon" })?.value
-    }
-
-    /// Helper function to extract the icon filename from the icon URL.
-    /// Example: "https://render-us.worldofwarcraft.com/icons/56/inv_sword_39.jpg" -> "inv_sword_39"
-    /// - Returns: The icon filename string, or nil if URL is not found or invalid.
-    func getIconName() -> String? {
-        guard let iconURLString = getIconURL(), let url = URL(string: iconURLString) else {
-            return nil
-        }
-        // Get the last path component (e.g., "inv_sword_39.jpg")
-        // Remove the file extension (e.g., ".jpg")
-        return url.deletingPathExtension().lastPathComponent
-    }
 }

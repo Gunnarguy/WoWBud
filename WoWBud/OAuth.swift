@@ -7,6 +7,26 @@
 
 import Foundation
 
+/// A structure representing the response from a successful OAuth token request.
+/// This is now a top-level struct to be accessible by services that use OAuth.
+public struct TokenResponse: Decodable, Sendable {
+    let accessToken: String
+    let tokenType: String
+    let expiresIn: Int // Seconds until token expires
+    private let createdAt = Date() // Store creation date
+
+    // Calculate the actual expiration date
+    var isExpired: Bool {
+        return Date() > createdAt.addingTimeInterval(TimeInterval(expiresIn))
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case tokenType = "token_type"
+        case expiresIn = "expires_in"
+    }
+}
+
 /// Handles OAuth client credentials flow for the Blizzard API.
 enum OAuth {
     /// Base URL for Blizzard OAuth endpoints
@@ -16,8 +36,8 @@ enum OAuth {
     /// - Parameters:
     ///   - clientID: The Blizzard API client ID
     ///   - clientSecret: The Blizzard API client secret
-    /// - Returns: The access token string
-    static func fetchToken(clientID: String, clientSecret: String) async throws -> String {
+    /// - Returns: A `TokenResponse` object containing the access token and its expiry time.
+    static func fetchToken(clientID: String, clientSecret: String) async throws -> TokenResponse {
         // Create the URL
         guard let url = URL(string: oauthURL) else {
             throw AppError.invalidURL(oauthURL)
@@ -51,22 +71,9 @@ enum OAuth {
         // Decode the response
         do {
             let tokenResponse = try JSONDecoder().decode(TokenResponse.self, from: data)
-            return tokenResponse.accessToken
+            return tokenResponse
         } catch {
             throw AppError.decodingFailure(entity: "OAuth Token", underlying: error)
-        }
-    }
-    
-    /// Token response structure from Blizzard OAuth endpoints
-    private struct TokenResponse: Decodable {
-        let accessToken: String
-        let tokenType: String
-        let expiresIn: Int
-        
-        enum CodingKeys: String, CodingKey {
-            case accessToken = "access_token"
-            case tokenType = "token_type"
-            case expiresIn = "expires_in"
         }
     }
 }

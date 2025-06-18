@@ -235,8 +235,7 @@ struct ItemLookupView: View {
     private func itemPreviewRow(_ itemPreview: ClassicItemPreview) -> some View {
         HStack(spacing: 12) {
             // Item icon with quality border
-            itemIconView(iconName: itemPreview.iconName, qualityType: itemPreview.qualityType)
-                .frame(width: 40, height: 40)
+            itemPreviewIconView(itemPreview: itemPreview)
 
             // Item name and ID
             VStack(alignment: .leading, spacing: 4) {
@@ -264,6 +263,58 @@ struct ItemLookupView: View {
         #endif
         .cornerRadius(8)
         .padding(.horizontal)  // Add horizontal padding around the row
+    }
+
+    /// Builds the item icon view with a quality-colored border for preview items.
+    /// - Parameter itemPreview: The ClassicItemPreview containing icon information.
+    private func itemPreviewIconView(itemPreview: ClassicItemPreview) -> some View {
+        // Prefer the full API URL, fallback to constructing from filename
+        let iconUrl: URL? = {
+            if let iconURL = itemPreview.iconURL {
+                return URL(string: iconURL)
+            } else if let iconName = itemPreview.iconName {
+                // Fallback to zamimg.com for older/missing icons
+                return URL(string: "https://wow.zamimg.com/images/wow/icons/large/\(iconName).jpg")
+            } else {
+                return nil
+            }
+        }()
+
+        return ZStack {
+            // Quality border
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(qualityColor(itemPreview.qualityType), lineWidth: 2)  // Color based on quality
+                .background(Color.black.cornerRadius(6))  // Black background behind icon
+
+            // Icon using AsyncImage for network loading
+            if let url = iconUrl {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:  // While loading
+                        ProgressView()
+                            .frame(width: 20, height: 20)
+                    case .success(let image):  // On successful load
+                        image.resizable()
+                            .aspectRatio(contentMode: .fit)
+                    case .failure:  // On failure to load
+                        Image(systemName: "questionmark.diamond.fill")
+                            .foregroundColor(.gray)
+                            .font(.caption)
+                    @unknown default:  // Future cases
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: 32, maxHeight: 32)  // Smaller for preview
+                .cornerRadius(4)  // Slightly rounded corners for the icon itself
+                .clipped()  // Clip icon to its bounds
+            } else {
+                // Fallback placeholder if no icon URL is available
+                Image(systemName: "questionmark.diamond.fill")
+                    .foregroundColor(.gray)
+                    .font(.caption)
+            }
+        }
+        .frame(width: 40, height: 40) // Fixed size for preview icons
     }
 
     /// Builds the detailed view for a specific item.
@@ -395,7 +446,7 @@ struct ItemLookupView: View {
     private func itemHeaderView(_ item: ClassicItem) -> some View {
         HStack(spacing: 16) {
             // Item icon
-            itemIconView(iconName: item.iconName, qualityType: item.qualityType)
+            itemIconView(item: item)
                 .frame(width: 64, height: 64)
 
             // Item name, type, subtype, binding
@@ -498,7 +549,7 @@ struct ItemLookupView: View {
 
                 // Link to ClassicDB
                 if let url = URL(string: "https://classicdb.ch/?item=\(item.id)") {
-                    Link(destination: url) {
+                    SwiftUI.Link(destination: url) {
                         Image(systemName: "link").foregroundColor(.blue)
                     }
                     .padding(.trailing, 8)  // Spacing before share button
@@ -595,27 +646,30 @@ struct ItemLookupView: View {
 
             // Updates the NSButton (not needed here)
             func updateNSView(_ nsView: PlatformButton, context: Context) {}
-
-            // Define makeUIView for protocol conformance, though it won't be used on macOS
-            func makeUIView(context: Context) -> UIView { return UIView() }
-            func updateUIView(_ uiView: UIView, context: Context) {}
         }
     #endif
 
     /// Builds the item icon view with a quality-colored border.
     /// - Parameters:
-    ///   - iconName: The name of the icon file (without extension).
+    ///   - item: The ClassicItem containing icon information.
     ///   - qualityType: The quality type string (e.g., "EPIC").
-    private func itemIconView(iconName: String?, qualityType: String) -> some View {
-        // Construct the icon URL from the icon name
-        let iconUrlString =
-            iconName != nil ? "https://wow.zamimg.com/images/wow/icons/large/\(iconName!).jpg" : nil
-        let iconUrl = URL(string: iconUrlString ?? "")
+    private func itemIconView(item: ClassicItem) -> some View {
+        // Prefer the full API URL, fallback to constructing from filename
+        let iconUrl: URL? = {
+            if let iconURL = item.iconURL {
+                return URL(string: iconURL)
+            } else if let iconName = item.iconName {
+                // Fallback to zamimg.com for older/missing icons
+                return URL(string: "https://wow.zamimg.com/images/wow/icons/large/\(iconName).jpg")
+            } else {
+                return nil
+            }
+        }()
 
         return ZStack {
             // Quality border
             RoundedRectangle(cornerRadius: 6)
-                .stroke(qualityColor(qualityType), lineWidth: 2)  // Color based on quality
+                .stroke(qualityColor(item.qualityType), lineWidth: 2)  // Color based on quality
                 .background(Color.black.cornerRadius(6))  // Black background behind icon
 
             // Icon using AsyncImage for network loading
@@ -640,7 +694,7 @@ struct ItemLookupView: View {
                 .cornerRadius(4)  // Slightly rounded corners for the icon itself
                 .clipped()  // Clip icon to its bounds
             } else {
-                // Fallback placeholder if iconName is nil or URL is invalid
+                // Fallback placeholder if no icon URL is available
                 Image(systemName: "questionmark.diamond.fill")
                     .foregroundColor(.gray)
                     .font(.title2)
@@ -676,12 +730,16 @@ struct ItemLookupView: View {
 
                 // Map API results to preview model
                 searchResults = searchResponse.results.compactMap { result -> ClassicItemPreview? in
-                    // Icon name isn't directly available in search results, set to nil
+                    // Extract icon information from the search result data
+                    let iconURL = result.data.getIconURL()
+                    let iconName = result.data.media?.getIconName()
+                    
                     return ClassicItemPreview(
                         id: result.data.id,
                         name: result.data.name,
                         qualityType: result.data.quality.type,
-                        iconName: nil
+                        iconName: iconName,
+                        iconURL: iconURL
                     )
                 }
 
@@ -713,6 +771,7 @@ struct ItemLookupView: View {
         searchResults = []  // Clear search results when loading a specific item
         item = nil
         var fetchedIconName: String? = nil
+        var fetchedIconURL: String? = nil
         var weaponDetails: ClassicItem.WeaponInfo? = nil
 
         do {
@@ -721,6 +780,12 @@ struct ItemLookupView: View {
 
             // Fetch media data (for icon) concurrently or subsequently
             let mediaResponse = try? await apiService.fetchItemMedia(id: id)
+            
+            // Try to get the full icon URL from the API first (Anniversary Edition icons)
+            fetchedIconURL = mediaResponse?.assets?.first(where: { $0.key == "icon" })?.value
+                ?? apiItem.getIconURL() // Fallback to item's own media
+            
+            // Also get the icon name as fallback
             fetchedIconName = mediaResponse?.getIconName()  // Extract icon name
 
             // Extract weapon info if available using helper functions
@@ -738,6 +803,7 @@ struct ItemLookupView: View {
                 name: apiItem.name,
                 qualityType: apiItem.getQualityType(),
                 iconName: fetchedIconName,
+                iconURL: fetchedIconURL,
                 itemType: apiItem.itemClass.name,
                 itemSubType: apiItem.itemSubclass.name,
                 inventorySlotName: apiItem.inventoryType.name,  // Ensure inventorySlotName is mapped
@@ -769,7 +835,8 @@ struct ItemLookupView: View {
                 id: fetchedItem.id,
                 name: fetchedItem.name,
                 qualityType: fetchedItem.qualityType,
-                iconName: fetchedItem.iconName
+                iconName: fetchedItem.iconName,
+                iconURL: fetchedItem.iconURL
             )
             self.addToRecentItems(preview)
 
@@ -909,7 +976,7 @@ struct ItemLookupView: View {
     }
 
     /// Helper function to map API's DisplayStrings to ClassicItem.FormattedPrice
-    private func mapFormattedPrice(_ displayStrings: Item.PreviewItem.SellPrice.DisplayStrings?)
+    private func mapFormattedPrice(_ displayStrings: PreviewItem.SellPrice.DisplayStrings?)
         -> ClassicItem.FormattedPrice?
     {
         guard let display = displayStrings else { return nil }
@@ -951,6 +1018,7 @@ struct ClassicItemPreview: Identifiable, Codable {
     let name: String
     let qualityType: String  // Store quality type string (e.g., "EPIC")
     let iconName: String?  // Store icon filename (optional)
+    let iconURL: String?   // Store full icon URL (optional)
 }
 
 /// Classic item with detailed info
@@ -959,6 +1027,7 @@ struct ClassicItem {  // This struct is local to the View
     let name: String
     let qualityType: String  // e.g., "EPIC"
     let iconName: String?  // Just the filename, e.g., "inv_sword_43"
+    let iconURL: String?   // Full URL to the icon from API
     let itemType: String?  // From ItemClass.name (e.g., "Armor")
     let itemSubType: String?  // From ItemSubclass.name (e.g., "Cloth")
     let inventorySlotName: String?  // e.g., "Chest", "Trinket"

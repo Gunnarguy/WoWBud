@@ -23,6 +23,9 @@ enum AppError: Error, LocalizedError, Sendable {
     // Authentication
     case oauth(String)
 
+    // General
+    case unknown(any Error)
+
     var errorDescription: String? {
         switch self {
         case .invalidURL(let url): return "Malformed URL: \(url)"
@@ -33,6 +36,7 @@ enum AppError: Error, LocalizedError, Sendable {
         case .sql(let msg): return "SQLite error: \(msg)"
         case .missingField(let f): return "Missing \(f) in data"
         case .oauth(let msg): return "OAuth flow failed: \(msg)"
+        case .unknown(let err): return "An unexpected error occurred: \(err.localizedDescription)"
         }
     }
 }

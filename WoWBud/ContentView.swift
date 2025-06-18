@@ -182,7 +182,7 @@ struct ContentView: View {
             )
             
             // Store the token
-            Secrets.oauthToken = token
+            Secrets.oauthToken = token.accessToken
             print("Successfully obtained OAuth token")
             tokenStatus = .success
         } catch {

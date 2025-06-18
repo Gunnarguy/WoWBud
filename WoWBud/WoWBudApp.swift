@@ -51,12 +51,7 @@ struct WoWBudApp: App {
                     }
                 }
                 
-                // Initialize OAuth token if credentials exist
-                if Secrets.clientID != "<INSERT-CLIENT-ID>" &&
-                   Secrets.clientSecret != "<INSERT-CLIENT-SECRET>" &&
-                   Secrets.oauthToken.isEmpty {
-                    refreshOAuthToken()
-                }
+                // The ClassicAPIService now manages its own token, so this is no longer needed.
             }
         }
     }
@@ -101,23 +96,5 @@ struct WoWBudApp: App {
             }
         }
         .transition(.opacity)
-    }
-    
-    /// Refresh the OAuth token
-    private func refreshOAuthToken() {
-        Task {
-            do {
-                let token = try await OAuth.fetchToken(
-                    clientID: Secrets.clientID,
-                    clientSecret: Secrets.clientSecret
-                )
-                
-                // Store the token
-                Secrets.oauthToken = token
-                print("Successfully obtained OAuth token")
-            } catch {
-                print("Failed to fetch OAuth token: \(error)")
-            }
-        }
     }
 }
